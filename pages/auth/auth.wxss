@@ -1,60 +1,77 @@
 .container {
   display: flex;
-  align-items: center;
   justify-content: center;
+  align-items: center;
   min-height: 100vh;
   background-color: #f5f5f5;
-  padding: 0 40rpx;
+  padding: 20rpx;
 }
 
-.auth-content {
-  width: 100%;
-  max-width: 600rpx;
+.login-card {
+  max-width: 800rpx;
+  min-height: 800rpx;
+  background: white;
+  border-radius: 10rpx;
+  padding: 60rpx 40rpx;
+  margin: 0 20rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.1);
+  overflow:hidden;
+}
+
+.title {
+  display: block;
   text-align: center;
-  padding: 80rpx 0;
-}
-
-.auth-icon {
-  font-size: 120rpx;
-  margin-bottom: 40rpx;
-  color: #07C160;
-}
-
-.auth-title {
   font-size: 48rpx;
   font-weight: bold;
+  color: #07C160;
+  margin-bottom: 30rpx;
+}
+
+.tab-container {
+  display: flex;
+  background: #f0f0f0;
+  border-radius: 6rpx;
+  overflow: hidden;
+  margin-bottom: 30rpx;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12rpx 0;
+  border: none;
+  background: transparent;
+  font-size: 32rpx;
   color: #333;
+}
+
+.tab-btn.active {
+  background: #07C160;
+  color: white;
+}
+
+.tab-btn.inactive {
+  background: transparent;
+  color: #999;
+}
+
+.input-group {
   margin-bottom: 20rpx;
 }
 
-.auth-desc {
-  font-size: 28rpx;
-  color: #666;
-  margin-bottom: 80rpx;
-  line-height: 1.5;
+.input {
+  padding: 12rpx 15rpx;
+  border: 1rpx solid #ddd;
+  border-radius: 5rpx;
+  font-size: 32rpx;
 }
 
-.auth-btn {
-  width: 400rpx;
-  line-height: 88rpx;
+.btn-login, .btn-register {
+  width: 100%;
+  padding: 12rpx;
   background-color: #07C160;
   color: white;
-  border-radius: 10rpx;
+  border: none;
+  border-radius: 5rpx;
   font-size: 32rpx;
-  margin: 0 auto 60rpx;
-  border: none;
-}
-
-.auth-btn::after {
-  border: none;
-}
-
-.auth-tips {
-  padding: 0 40rpx;
-}
-
-.tips-text {
-  font-size: 24rpx;
-  color: #999;
-  line-height: 1.5;
+  margin-top: 10rpx;
 }

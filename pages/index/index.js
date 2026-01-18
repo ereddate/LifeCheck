@@ -1,5 +1,4 @@
-const db = wx.cloud.database()
-const _ = db.command
+const api = require('../../api.js')
 
 Page({
   data: {
@@ -7,7 +6,8 @@ Page({
     filterType: 'all',
     totalCount: 0,
     todayCount: 0,
-    streakDays: 0
+    streakDays: 0,
+    refreshing: false
   },
 
   onLoad() {
@@ -30,22 +30,48 @@ Page({
     })
   },
 
+  // 下拉刷新
+  onPullDownRefresh() {
+    this.setData({
+      refreshing: true
+    });
+
+    this.ensureLogin().then(() => {
+      // 重新加载数据
+      this.loadCheckinList();
+      this.loadStats();
+    }).catch(err => {
+      console.error('刷新失败', err);
+      wx.stopPullDownRefresh(); // 停止下拉刷新动画
+      this.setData({
+        refreshing: false
+      });
+    });
+  },
+
+  // 数据加载完成后停止刷新
+  onDataLoaded() {
+    if (this.data.refreshing) {
+      wx.stopPullDownRefresh(); // 停止下拉刷新动画
+      this.setData({
+        refreshing: false
+      });
+    }
+  },
+
   // 确保用户已登录
   ensureLogin() {
     return new Promise((resolve, reject) => {
       const app = getApp()
-      if (app.globalData.openid) {
+      if (app.globalData.currentUser) {
         // 已登录
-        resolve(app.globalData.openid)
+        resolve(app.globalData.currentUser.id)
       } else {
-        // 未登录，尝试登录
-        app.autoLogin().then(openid => {
-          resolve(openid)
-        }).catch(err => {
-          // 登录失败，引导用户授权
-          this.navigateToAuth()
-          reject(err)
+        // 未登录，跳转到登录页面
+        wx.redirectTo({
+          url: '/pages/auth/auth'
         })
+        reject(new Error('未登录'))
       }
     })
   },
@@ -58,65 +84,74 @@ Page({
   },
 
   loadCheckinList() {
-    const { filterType } = this.data
-    const where = filterType === 'all' ? {} : { type: filterType }
-
-    db.collection('checkin_tasks')
-      .where(where)
-      .orderBy('createTime', 'desc')
-      .get()
-      .then(res => {
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        
-        const list = res.data.map(item => {
-          const lastCheckTime = new Date(item.lastCheckTime)
-          const isToday = lastCheckTime >= today
-          return {
-            ...item,
-            checkedToday: isToday,
-            lastCheckTime: this.formatTime(item.lastCheckTime),
-            typeName: this.getTypeName(item.type)
-          }
+    this.ensureLogin().then((openid) => {
+      // 从Flask后端获取用户打卡记录
+      api.getUserRecords(openid)
+        .then(res => {
+          const today = new Date()
+          today.setHours(0, 0, 0, 0)
+          
+          // 处理返回的数据格式，使其与原有UI适配
+          const list = res.map(item => {
+            // 假设后端返回的数据包含打卡任务相关信息
+            // 解决iOS日期格式兼容性问题
+            let dateStr = item.create_time;
+            if (typeof dateStr === 'string' && dateStr.includes(' ')) {
+              // 将 "YYYY-MM-DD HH:MM:SS" 转换为 "YYYY/MM/DD HH:MM:SS"
+              dateStr = dateStr.replace(/-/g, '/');
+            }
+            const lastCheckTime = new Date(dateStr);
+            const isToday = lastCheckTime >= today;
+            
+            return {
+              ...item,
+              id: item.id,
+              title: item.title,
+              content: item.content,
+              checkedToday: isToday,
+              lastCheckTime: this.formatTime(lastCheckTime),
+              typeName: this.getTypeName('daily') // 默认类型
+            }
+          })
+          
+          this.setData({ checkinList: list })
+          this.onDataLoaded(); // 通知数据加载完成
         })
-        
-        this.setData({ checkinList: list })
-      })
-      .catch(err => {
-        console.error('加载打卡列表失败', err)
-        wx.showToast({
-          title: '加载失败',
-          icon: 'none'
+        .catch(err => {
+          console.error('加载打卡列表失败', err)
+          wx.showToast({
+            title: '加载失败',
+            icon: 'none'
+          })
+          this.onDataLoaded(); // 即使失败也要停止刷新
         })
-      })
+    }).catch(err => {
+      console.error('未登录无法加载列表', err)
+      this.onDataLoaded(); // 即使失败也要停止刷新
+    })
   },
 
   loadStats() {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    db.collection('checkin_tasks')
-      .count()
-      .then(res => {
-        this.setData({ totalCount: res.total })
-      })
-
-    db.collection('checkin_records')
-      .where({
-        checkTime: _.gte(today)
-      })
-      .count()
-      .then(res => {
-        this.setData({ todayCount: res.total })
-      })
-
-    db.collection('checkin_stats')
-      .doc('user_stats')
-      .get()
-      .then(res => {
-        this.setData({ streakDays: res.data.streakDays || 0 })
-      })
-      .catch(() => {})
+    this.ensureLogin().then((openid) => {
+      // 从Flask后端获取用户统计数据
+      api.getStats(openid)
+        .then(res => {
+          // 更新统计数据
+          this.setData({ 
+            totalCount: res.total_checkins || 0,
+            todayCount: res.recent_checkins ? res.recent_checkins.length : 0,
+            streakDays: res.streakDays || 0
+          })
+          this.onDataLoaded(); // 通知数据加载完成
+        })
+        .catch(err => {
+          console.error('加载统计数据失败', err)
+          this.onDataLoaded(); // 即使失败也要停止刷新
+        })
+    }).catch(err => {
+      console.error('未登录无法加载统计', err)
+      this.onDataLoaded(); // 即使失败也要停止刷新
+    })
   },
 
   switchFilter(e) {
@@ -142,27 +177,45 @@ Page({
   },
 
   doCheckin(e) {
-    this.ensureLogin().then(() => {
+    this.ensureLogin().then((openid) => {
       const id = e.currentTarget.dataset.id
-      wx.cloud.callFunction({
-        name: 'doCheckin',
-        data: { taskId: id }
-      }).then(() => {
-        wx.showToast({
-          title: '打卡成功',
-          icon: 'success'
+      
+      // 准备打卡数据
+      const checkinData = {
+        openid: openid,
+        title: '新的打卡', // 实际应用中可能需要获取任务标题
+        content: '打卡内容',
+        date: new Date().toISOString().split('T')[0],
+        create_time: new Date().toISOString()
+      }
+      
+      // 调用Flask后端API进行打卡
+      api.doCheckin(checkinData)
+        .then(res => {
+          if (res.success) {
+            wx.showToast({
+              title: '打卡成功',
+              icon: 'success'
+            })
+            this.loadCheckinList()
+            this.loadStats()
+            
+            // 打卡成功后询问是否提醒好友
+            this.askToRemindFriends()
+          } else {
+            wx.showToast({
+              title: '打卡失败',
+              icon: 'none'
+            })
+          }
         })
-        this.loadCheckinList()
-        this.loadStats()
-        
-        // 打卡成功后询问是否提醒好友
-        this.askToRemindFriends()
-      }).catch(err => {
-        wx.showToast({
-          title: '打卡失败',
-          icon: 'none'
+        .catch(err => {
+          console.error('打卡失败', err)
+          wx.showToast({
+            title: '打卡失败',
+            icon: 'none'
+          })
         })
-      })
     }).catch(err => {
       console.error('未登录无法打卡', err)
     })

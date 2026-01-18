@@ -52,8 +52,8 @@
   "appid": "wxa041afe9a46d12ee",
   "projectname": "life-checkin",
   "condition": {},
-  "cloudfunctionRoot": "cloudfunctions/",
   "simulatorPluginLibVersion": {},
-  "editorSetting": {},
-  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/"
+  "editorSetting": {
+    "advancedBuild": true
+  }
 }

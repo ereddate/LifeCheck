@@ -4,7 +4,10 @@
     "pages/index/index",
     "pages/detail/detail",
     "pages/mine/mine",
-    "pages/auth/auth"
+    "pages/auth/auth",
+    "pages/settings/settings",
+    "pages/friends/friends",
+    "pages/messages/messages"
   ],
   "window": {
     "backgroundTextStyle": "light",
@@ -32,6 +35,12 @@
         "selectedIconPath": "images/tabbar/shijian_1.png"
       },
       {
+        "pagePath": "pages/friends/friends",
+        "text": "好友们",
+        "iconPath": "images/tabbar/aixin.png",
+        "selectedIconPath": "images/tabbar/aixin_1.png"
+      },
+      {
         "pagePath": "pages/mine/mine",
         "text": "我的",
         "iconPath": "images/tabbar/shequ.png",
@@ -39,7 +48,7 @@
       }
     ]
   },
-  "cloud": true,
+
   "style": "v2",
   "sitemapLocation": "sitemap.json"
 }

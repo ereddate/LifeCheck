@@ -1,32 +1,43 @@
 <view class="container">
   <view class="checkin-button-section">
-    <button class="big-checkin-btn" bindtap="submitForm">
+    <button class="big-checkin-btn {{hasCheckedInToday ? 'checked' : ''}}" 
+            bindtap="submitForm" 
+            disabled="{{hasCheckedInToday}}">
       <text class="btn-icon">✓</text>
-      <text class="btn-text">我在</text>
+      <text class="btn-text">{{hasCheckedInToday ? '今日已打卡' : '我在'}}</text>
     </button>
+    <view class="checkin-tips" wx:if="{{hasCheckedInToday}}">
+      <text class="tips-text">感谢你的陪伴</text>
+    </view>
   </view>
+  
 
   <view class="friends-section">
     <view class="section-title" wx:if="{{friendList.length > 0}}">
-      <text class="title-text">好友未打卡</text>
-      <text class="title-count">{{friendList.length}}</text>
+      <text class="title-text">最亲密未打卡好友</text>
+      <text class="title-count">{{totalFriendCount}}</text>
     </view>
     <view class="friend-list" wx:if="{{friendList.length > 0}}">
       <block wx:for="{{friendList}}" wx:key="id">
         <view class="friend-item">
-          <image class="friend-avatar" src="{{item.avatar}}" mode="aspectFill"></image>
+          <image class="friend-avatar" src="{{item.avatar_url || '/images/default-avatar.png'}}" mode="aspectFill"></image>
           <view class="friend-info">
-            <text class="friend-name">{{item.name}}</text>
-            <text class="friend-time">{{item.lastCheckTime}}</text>
+            <text class="friend-name">{{item.nickname || item.username}}</text>
+            <text class="friend-time">亲密度: {{item.intimacy_score}}</text>
           </view>
-          <button class="remind-btn" bindtap="remindFriend" data-id="{{item.id}}" data-name="{{item.name}}">
+          <button class="remind-btn" bindtap="remindFriend" data-id="{{item.id}}" data-name="{{item.nickname || item.username}}">
             提醒
           </button>
         </view>
       </block>  
     </view>
+    <view class="friends-actions" wx:if="{{totalFriendCount > 0}}">
+      <button class="view-all-btn" bindtap="goToAllFriends">
+        查看所有好友
+      </button>
+    </view>
     <view wx:elseif="{{friendList.length === 0}}" class="empty-friends">
-        <text class="empty-text">暂无好友</text>
+        <text class="empty-text">暂无未打卡好友</text>
         <button class="share-btn" open-type="share">
           <text class="share-icon">+</text>
           <text class="share-text">叫好友一起打卡</text>

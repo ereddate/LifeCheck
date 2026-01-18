@@ -10,11 +10,11 @@
   </view>
 
   <view class="stats-grid">
-    <view class="stat-box">
+    <view class="stat-box" bindtap="goToCheckedHistory">
       <text class="stat-num">{{stats.totalCheckins}}</text>
       <text class="stat-label">总打卡数</text>
     </view>
-    <view class="stat-box">
+    <view class="stat-box" bindtap="goToAllFriends">
       <text class="stat-num">{{stats.friendCount}}</text>
       <text class="stat-label">好友数量</text>
     </view>
@@ -22,14 +22,20 @@
       <text class="stat-num">{{stats.notCheckedInFriends}}</text>
       <text class="stat-label">未打卡好友</text>
     </view>
+    <view class="stat-box" bindtap="goToMessages">
+      <text class="stat-num">{{stats.messageCount}}</text>
+      <text class="stat-label">消息数量</text>
+    </view>
   </view>
 
   <view class="menu-section">
+    <!-- 
     <view class="menu-item" bindtap="goToRecords">
       <view class="menu-icon">📊</view>
       <text class="menu-text">打卡统计</text>
       <text class="menu-arrow">›</text>
     </view>
+    -->
     <view class="menu-item" bindtap="goToSettings">
       <view class="menu-icon">⚙️</view>
       <text class="menu-text">设置</text>

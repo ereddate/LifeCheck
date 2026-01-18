@@ -1,45 +1,73 @@
-const db = wx.cloud.database()
+const api = require('../../api.js')
 
 Page({
   data: {
-    friendList: []
+    friendList: [],
+    totalFriendCount: 0,      // 总好友数量
+    hasCheckedInToday: false  // 是否今天已打卡
   },
 
   onLoad() {
     // 确保用户已登录
     this.ensureLogin().then(() => {
-      this.loadFriendList()
+      this.checkTodayCheckinStatus();
+      this.loadFriendList();
     }).catch(err => {
       console.error('登录失败', err)
     })
   },
 
   onShow() {
-    // 仅检查登录状态，不重复加载好友列表
-    // 好友列表在onLoad时已加载，无需每次显示都重新加载
+    // 每次显示页面时都检查登录状态和打卡状态
     this.ensureLogin().then(() => {
-      // 如果需要刷新数据，可以在这里添加适当的条件判断
+      this.checkTodayCheckinStatus();
     }).catch(err => {
       console.error('登录失败', err)
     })
+  },
+
+  // 检查用户今天是否已经打卡
+  checkTodayCheckinStatus() {
+    this.ensureLogin().then((userId) => {
+      // 获取今天的日期
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      
+      // 获取用户的所有打卡记录
+      api.getUserRecords(userId)
+        .then(records => {
+          // 检查今天是否有打卡记录
+          const todayRecord = records.some(record => record.date === todayStr);
+          
+          this.setData({
+            hasCheckedInToday: todayRecord
+          });
+        })
+        .catch(err => {
+          console.error('检查打卡状态失败', err);
+          // 如果无法获取记录，默认设为未打卡
+          this.setData({
+            hasCheckedInToday: false
+          });
+        });
+    }).catch(err => {
+      console.error('未登录无法检查打卡状态', err);
+    });
   },
 
   // 确保用户已登录
   ensureLogin() {
     return new Promise((resolve, reject) => {
       const app = getApp()
-      if (app.globalData.openid) {
+      if (app.globalData.currentUser) {
         // 已登录
-        resolve(app.globalData.openid)
+        resolve(app.globalData.currentUser.id)
       } else {
-        // 未登录，尝试登录
-        app.autoLogin().then(openid => {
-          resolve(openid)
-        }).catch(err => {
-          // 登录失败，引导用户授权
-          this.navigateToAuth()
-          reject(err)
+        // 未登录，跳转到登录页面
+        wx.redirectTo({
+          url: '/pages/auth/auth'
         })
+        reject(new Error('未登录'))
       }
     })
   },
@@ -52,71 +80,36 @@ Page({
   },
 
   loadFriendList() {
-    // 默认值：如果没有获取到数据或出错，显示提示信息
-    const defaultFriendList = []
-    
-    // 从云数据库获取好友列表
-    // 这里假设有一个存储好友关系的集合
-    db.collection('friends_list')
-      .where({
-        _openid: db.command.eq(wx.getStorageSync('openid') || '') // 假设用户已登录并存储了openid
-      })
-      .get()
-      .then(res => {
-        if (res.data && res.data.length > 0) {
-          // 如果有好友数据，查询他们的打卡情况
-          const friendIds = res.data.map(friend => friend.openid)
+    this.ensureLogin().then((userId) => {
+      // 从后端获取亲密度最高的未打卡好友列表
+      api.getTopIntimacyNotCheckedInFriends(userId)
+        .then(friends => {
+          // 记录总好友数量
+          const totalFriendCount = friends.length;
           
-          // 查询好友的打卡记录
-          db.collection('checkin_tasks')
-            .where({
-              _openid: db.command.in(friendIds)
-            })
-            .get()
-            .then(tasksRes => {
-              // 整理好友打卡数据
-              const friendList = res.data.map(friend => {
-                const task = tasksRes.data.find(t => t._openid === friend.openid)
-                return {
-                  id: friend.openid || Math.random().toString(36).substr(2, 9),
-                  name: friend.nickName || '好友',
-                  avatar: friend.avatarUrl || 'https://thirdwx.qlogo.cn/mmopen/vi_32/DYAIOgq83epDKDibiaKksKn3licpT2k2Q5XiaicvHkiciaYRJia2iaicY5iaia8iajZMibYx4m2h87ia8aJibqic7iaiaaia2oQ2ibicQ/132',
-                  lastCheckTime: task?.lastCheckTime ? this.formatTime(task.lastCheckTime) : '未打卡'
-                }
-              })
-              
-              this.setData({
-                friendList: friendList.length > 0 ? friendList : defaultFriendList
-              })
-            })
-            .catch(err => {
-              console.error('获取好友打卡记录失败', err)
-              // 即使获取好友打卡记录失败，也显示好友列表
-              const friendList = res.data.map(friend => ({
-                id: friend.openid || Math.random().toString(36).substr(2, 9),
-                name: friend.nickName || '好友',
-                avatar: friend.avatarUrl || 'https://thirdwx.qlogo.cn/mmopen/vi_32/DYAIOgq83epDKDibiaKksKn3licpT2k2Q5XiaicvHkiciaYRJia2iaicY5iaia8iajZMibYx4m2h87ia8aJibqic7iaiaaia2oQ2ibicQ/132',
-                lastCheckTime: '未知'
-              }))
-              
-              this.setData({
-                friendList: friendList.length > 0 ? friendList : defaultFriendList
-              })
-            })
-        } else {
-          // 没有好友，使用默认值
+          // 更新页面数据
           this.setData({
-            friendList: defaultFriendList
-          })
-        }
-      })
-      .catch(err => {
-        console.error('获取好友列表失败', err)
-        // 错误情况下使用默认值
-        this.setData({
-          friendList: defaultFriendList
+            friendList: friends,
+            totalFriendCount: totalFriendCount
+          });
+          
+          console.log(`加载亲密度最高的未打卡好友：${totalFriendCount}位`);
         })
-      })
+        .catch(err => {
+          console.error('获取亲密度最高未打卡好友列表失败', err);
+          // 出错时显示空列表
+          this.setData({
+            friendList: [],
+            totalFriendCount: 0
+          });
+        });
+    }).catch(err => {
+      console.error('未登录无法加载好友列表', err);
+      this.setData({
+        friendList: [],
+        totalFriendCount: 0
+      });
+    });
   },
 
   formatTime(timestamp) {
@@ -135,7 +128,7 @@ Page({
   },
 
   remindFriend(e) {
-    this.ensureLogin().then(() => {
+    this.ensureLogin().then((userId) => {
       const friendId = e.currentTarget.dataset.id
       const friendName = e.currentTarget.dataset.name
       
@@ -144,11 +137,31 @@ Page({
         content: `确定要提醒 ${friendName} 打卡吗？`,
         success: (res) => {
           if (res.confirm) {
-            // 这里可以实现提醒好友的逻辑，比如发送模板消息
-            wx.showToast({
-              title: '提醒成功',
-              icon: 'success'
-            })
+            // 调用API提醒好友并更新亲密度
+            api.remindFriend(userId, friendId)
+              .then(response => {
+                if (response.success) {
+                  wx.showToast({
+                    title: response.message || '提醒成功',
+                    icon: 'success'
+                  })
+                  
+                  // 重新加载好友列表以反映最新的亲密度变化
+                  this.loadFriendList();
+                } else {
+                  wx.showToast({
+                    title: response.error || '提醒失败',
+                    icon: 'none'
+                  })
+                }
+              })
+              .catch(err => {
+                console.error('提醒好友失败', err);
+                wx.showToast({
+                  title: '提醒失败',
+                  icon: 'none'
+                });
+              });
           }
         }
       })
@@ -157,8 +170,24 @@ Page({
     })
   },
 
+  // 跳转到所有好友页面
+  goToAllFriends() {
+    wx.navigateTo({
+      url: '/pages/friends/friends'
+    });
+  },
+
   submitForm() {
-    this.ensureLogin().then(() => {
+    // 检查是否今天已经打卡
+    if (this.data.hasCheckedInToday) {
+      wx.showToast({
+        title: '今日已打卡',
+        icon: 'none'
+      });
+      return;
+    }
+
+    this.ensureLogin().then((userId) => {
       const now = new Date()
       const hour = now.getHours()
       let title = '今日打卡'
@@ -183,54 +212,82 @@ Page({
         title: '打卡中...'
       })
 
-      db.collection('checkin_tasks').add({
-        data: {
-          title: title,
-          type: 'daily',
-          description: '坚持打卡，养成好习惯',
-          remindTime: '08:00',
-          targetDays: 30,
-          totalCount: 0,
-          streakDays: 0,
-          lastCheckTime: null,
-          createTime: db.serverDate(),
-          updateTime: db.serverDate()
-        }
-      }).then(res => {
-        wx.hideLoading()
-        wx.showToast({
-          title: '打卡成功',
-          icon: 'success'
+      // 使用Flask后端API进行打卡
+      const checkinData = {
+        user_id: userId,
+        title: title,
+        content: '坚持打卡，养成好习惯',
+        date: now.toISOString().split('T')[0]
+        // 不传递create_time，让后端自动生成
+      }
+      
+      api.doCheckin(checkinData)
+        .then(res => {
+          wx.hideLoading()
+          if (res.success) {
+            wx.showToast({
+              title: '打卡成功',
+              icon: 'success'
+            })
+            // 更新打卡状态
+            this.setData({
+              hasCheckedInToday: true
+            });
+            setTimeout(() => {
+              wx.switchTab({
+                url: '/pages/index/index'
+              })
+            }, 1500)
+          } else {
+            wx.showToast({
+              title: res.error || '打卡失败',
+              icon: 'none'
+            })
+          }
         })
-        setTimeout(() => {
-          wx.switchTab({
-            url: '/pages/index/index'
+        .catch(err => {
+          wx.hideLoading()
+          console.error('打卡失败', err)
+          wx.showToast({
+            title: err.message || '打卡失败',
+            icon: 'none'
           })
-        }, 1500)
-      }).catch(err => {
-        wx.hideLoading()
-        console.error('打卡失败', err)
-        wx.showToast({
-          title: '打卡失败',
-          icon: 'none'
         })
-      })
     }).catch(err => {
       console.error('未登录无法提交表单', err)
     })
   },
   
   onShareAppMessage() {
+    const app = getApp();
+    const currentUser = app.globalData.currentUser;
+    
+    let sharePath = '/pages/index/index';
+    if (currentUser && currentUser.id) {
+      // 包含推荐人ID
+      sharePath = `/pages/auth/auth?referrer_id=${currentUser.id}`;
+    }
+    
     return {
       title: '邀请你加入人生打卡计划',
-      path: '/pages/index/index',
+      path: sharePath,
       imageUrl: '/images/share-image.jpg' // 如果有分享图片的话
     }
   },
   
   onShareTimeline() {
+    const app = getApp();
+    const currentUser = app.globalData.currentUser;
+    
+    let sharePath = '/pages/index/index';
+    if (currentUser && currentUser.id) {
+      // 包含推荐人ID
+      sharePath = `/pages/auth/auth?referrer_id=${currentUser.id}`;
+    }
+    
     return {
-      title: '坚持打卡，成就更好的自己'
+      title: '坚持打卡，成就更好的自己',
+      query: `referrer_id=${currentUser?.id || ''}`
     }
   }
 })

@@ -1,0 +1,32 @@
+<view class="container">
+  <view class="messages-list">
+    <block wx:for="{{messages}}" wx:key="id">
+      <view class="message-item {{item.read_status === 0 ? 'unread' : 'read'}}">
+        <image class="avatar" src="{{item.avatar_url || '/images/default-avatar.png'}}" mode="aspectFill"></image>
+        <view class="message-content">
+          <view class="message-header">
+            <text class="sender-name">{{item.nickname}}</text>
+            <text class="message-time">{{item.formattedTime}}</text>
+          </view>
+          <view class="message-body">
+            <text class="message-text">{{item.content}}</text>
+          </view>
+          <view class="message-type">
+            <text class="type-tag">提醒打卡</text>
+          </view>
+        </view>
+        <view class="message-status" wx:if="{{item.read_status === 0}}">
+          <text class="unread-dot"></text>
+        </view>
+      </view>
+    </block>
+  </view>
+
+  <view class="empty-container" wx:if="{{messages.length === 0 && !isLoading}}">
+    <text class="empty-text">暂无消息</text>
+  </view>
+
+  <view class="loading-container" wx:if="{{isLoading}}">
+    <text class="loading-text">加载中...</text>
+  </view>
+</view>

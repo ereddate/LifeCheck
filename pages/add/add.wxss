@@ -29,6 +29,7 @@
 .checkin-button-section {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   width: 100%;
@@ -56,6 +57,36 @@
 .big-checkin-btn:active {
   transform: scale(0.95);
   box-shadow: 0 8rpx 24rpx rgba(7, 193, 96, 0.4);
+}
+
+.big-checkin-btn.checked {
+  background: linear-gradient(135deg, #d9d9d9 0%, #bfbfbf 100%);
+  box-shadow: 0 12rpx 40rpx rgba(191, 191, 191, 0.3);
+}
+
+.big-checkin-btn.checked:active {
+  transform: scale(1);
+  box-shadow: 0 12rpx 40rpx rgba(191, 191, 191, 0.3);
+}
+
+/* 已打卡状态下文字颜色变灰 */
+.big-checkin-btn.checked .btn-text {
+  color: #8c8c8c;
+}
+
+.big-checkin-btn.checked .btn-icon {
+  color: #8c8c8c;
+}
+
+.checkin-tips {
+  text-align: center;
+  margin-top: 20rpx;
+}
+
+.tips-text {
+  font-size: 28rpx;
+  color: #8c8c8c;
+  font-style: italic;
 }
 
 .btn-icon {
@@ -165,6 +196,26 @@
   font-size: 28rpx;
   color: #999;
   margin-bottom: 40rpx;
+}
+
+.friends-actions {
+  margin-top: 20rpx;
+  text-align: center;
+}
+
+.view-all-btn {
+  background: linear-gradient(135deg, #4a90e2 0%, #3a7bd5 100%);
+  color: #fff;
+  border-radius: 50rpx;
+  padding: 20rpx 40rpx;
+  font-size: 28rpx;
+  border: none;
+  display: inline-block;
+  margin: 0 auto;
+}
+
+.view-all-btn::after {
+  border: none;
 }
 
 .share-btn {

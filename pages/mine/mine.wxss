@@ -7,7 +7,6 @@
   padding: 60rpx 40rpx;
   display: flex;
   align-items: center;
-  color: #fff;
 }
 
 .avatar {
@@ -38,7 +37,7 @@
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 20rpx;
   padding: 30rpx;
   margin-top: -30rpx;

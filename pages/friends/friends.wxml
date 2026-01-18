@@ -1,0 +1,43 @@
+<view class="container">
+  <view class="header">
+    <text class="title">好友列表</text>
+    <text class="count">共 {{totalFriends}} 位好友</text>
+  </view>
+
+  <view class="actions">
+    <button class="action-btn" bindtap="goToMessages">
+      <text class="action-icon">💬</text>
+      <text class="action-text">消息</text>
+      <view class="unread-badge" wx:if="{{unreadCount > 0}}">
+        <text class="unread-count">{{unreadCount}}</text>
+      </view>
+    </button>
+  </view>
+
+  <view class="friends-list">
+    <block wx:for="{{friends}}" wx:key="id">
+      <view class="friend-item">
+        <image class="friend-avatar" src="{{item.avatar_url || '/images/default-avatar.png'}}" mode="aspectFill"></image>
+        <view class="friend-info">
+          <text class="friend-name">{{item.nickname || item.username}}</text>
+          <text class="friend-intimacy">亲密度: {{item.intimacy_score}}</text>
+        </view>
+        <button class="remind-btn" bindtap="remindFriend" data-id="{{item.id}}" data-name="{{item.nickname || item.username}}">
+          提醒打卡
+        </button>
+      </view>
+    </block>
+  </view>
+
+  <view class="loading-container" wx:if="{{isLoading}}">
+    <text class="loading-text">加载中...</text>
+  </view>
+
+  <view class="no-more" wx:if="{{!hasMore && friends.length > 0}}">
+    <text class="no-more-text">没有更多好友了</text>
+  </view>
+
+  <view class="empty-container" wx:if="{{friends.length === 0 && !isLoading}}">
+    <text class="empty-text">暂无好友</text>
+  </view>
+</view>

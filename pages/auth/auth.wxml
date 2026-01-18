@@ -1,14 +1,42 @@
 <view class="container">
-  <view class="auth-content">
-    <view class="auth-title">授权登录</view>
-    <view class="auth-desc">为了更好的体验，请授权获取您的个人信息</view>
+  <view class="login-card">
+    <text class="title">人生打卡</text>
     
-    <button class="auth-btn" open-type="getUserInfo" bindgetuserinfo="onGetUserInfo">
-      授权登录
-    </button>
-    
-    <view class="auth-tips">
-      <text class="tips-text">点击授权表示您同意我们的隐私政策和服务条款</text>
+    <!-- 登录/注册切换 -->
+    <view class="tab-container">
+      <button class="{{isRegister ? 'tab-btn inactive' : 'tab-btn active'}}" bindtap="switchToLogin">登录</button>
+      <button class="{{isRegister ? 'tab-btn active' : 'tab-btn inactive'}}" bindtap="switchToRegister">注册</button>
     </view>
+    
+    <!-- 登录表单 -->
+    <form wx:if="{{!isRegister}}" bindsubmit="handleLogin">
+      <view class="input-group">
+        <input class="input" name="username" placeholder="请输入用户名" value="{{username}}" bindinput="onUsernameInput"/>
+      </view>
+      <view class="input-group">
+        <input class="input" password name="password" placeholder="请输入密码" value="{{password}}" bindinput="onPasswordInput"/>
+      </view>
+      <button class="btn-login" formType="submit">登录</button>
+    </form>
+    
+    <!-- 注册表单 -->
+    <form wx:if="{{isRegister}}" bindsubmit="handleRegister">
+      <view class="input-group">
+        <input class="input" name="username" placeholder="请输入用户名" value="{{username}}" bindinput="onUsernameInput"/>
+      </view>
+      <view class="input-group">
+        <input class="input" password name="password" placeholder="请输入密码" value="{{password}}" bindinput="onPasswordInput"/>
+      </view>
+      <view class="input-group">
+        <input class="input" name="confirmPassword" password placeholder="请确认密码" value="{{confirmPassword}}" bindinput="onConfirmPasswordInput"/>
+      </view>
+      <view class="input-group">
+        <input class="input" name="nickname" placeholder="请输入昵称（可选）" value="{{nickname}}" bindinput="onNicknameInput"/>
+      </view>
+      <view class="input-group">
+        <input class="input" name="email" placeholder="请输入邮箱（可选）" value="{{email}}" bindinput="onEmailInput"/>
+      </view>
+      <button class="btn-register" formType="submit">注册</button>
+    </form>
   </view>
 </view>

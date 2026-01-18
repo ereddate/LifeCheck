@@ -1,11 +1,10 @@
-const db = wx.cloud.database()
-const _ = db.command
+const api = require('../../api.js')
 
 Page({
   data: {
     userInfo: {
       nickName: '点击登录',
-      avatarUrl: '/images/default-avatar.png' // 假设有默认头像
+      avatarUrl: '/images/default-avatar.png'
     },
     stats: {
       totalTasks: 0,
@@ -13,335 +12,416 @@ Page({
       maxStreak: 0,
       thisMonth: 0,
       friendCount: 0,
+      messageCount: 0,
       notCheckedInFriends: 0
     },
-    todayTip: '坚持就是胜利，今天也要加油哦！'
+    todayTip: '坚持就是胜利，今天也要加油哦！',
+    currentUser: null
   },
 
   onLoad() {
-    // 确保用户已登录
-    this.ensureLogin().then(() => {
-      this.loadStats()
-      this.loadTodayTip()
-    }).catch(err => {
-      console.error('登录失败', err)
-    })
-  },
-
-  onLoad() {
-    // 确保用户已登录
-    this.ensureLogin().then(() => {
-      this.loadStats()
-      this.loadTodayTip()
-    }).catch(err => {
-      console.error('登录失败', err)
-    })
-    
-    // 加载本地用户信息
-    this.loadLocalUserInfo()
+    // 检查登录状态
+    this.checkLoginStatus();
   },
 
   onShow() {
-    // 每次显示页面时都加载本地用户信息
-    this.loadLocalUserInfo()
-    
-    // 仅检查登录状态，不重复加载统计数据
-    // 统计数据在onLoad时已加载，无需每次显示都重新加载
-    this.ensureLogin().then(() => {
-      // 如果需要刷新数据，可以在这里添加适当的条件判断
-    }).catch(err => {
-      console.error('登录失败', err)
-    })
+    // 每次进入页面都检查登录状态并刷新数据
+    this.checkLoginStatus();
   },
 
-  // 加载本地用户信息
-  loadLocalUserInfo() {
-    const userInfo = wx.getStorageSync('userInfo') || {
-      nickName: '点击登录',
-      avatarUrl: '/images/default-avatar.png'
+  // 检查登录状态
+  checkLoginStatus() {
+    const app = getApp();
+    if (app.isLogin()) {
+      // 已登录，获取用户信息
+      this.setData({
+        currentUser: app.globalData.currentUser
+      });
+      this.loadUserData();
+    } else {
+      // 未登录，跳转到授权页面
+      wx.redirectTo({
+        url: '/pages/auth/auth'
+      });
     }
-    this.setData({ userInfo })
   },
 
-  // 跳转到授权页面
+  // 加载用户数据
+  loadUserData() {
+    const currentUser = this.data.currentUser;
+    if (!currentUser) {
+      console.error('未获取到当前用户信息');
+      return;
+    }
+
+    // 获取用户统计信息
+    api.getStats(currentUser.id)
+      .then(stats => {
+        this.setData({
+          'stats.totalCheckins': stats.total_checkins || 0,
+          'stats.thisMonth': stats.recent_checkins ? stats.recent_checkins.length : 0
+        });
+      })
+      .catch(err => {
+        console.error('获取用户统计数据失败', err);
+        this.setData({
+          'stats.totalCheckins': 0,
+          'stats.thisMonth': 0
+        });
+      });
+
+    // 设置用户信息
+    this.setData({
+      userInfo: {
+        nickName: currentUser.nickname || currentUser.username,
+        avatarUrl: currentUser.avatar_url || '/images/default-avatar.png' // 使用后端返回的头像，否则使用默认头像
+      }
+    });
+  },
+
+  // 头像点击事件 - 已登录时查看个人信息，未登录时跳转到登录
   goToAuth() {
-    wx.navigateTo({
-      url: '/pages/auth/auth'
+    const app = getApp();
+    if (app.isLogin()) {
+      // 已登录，可以在这里添加查看个人信息的功能
+      wx.showToast({
+        title: '您已登录',
+        icon: 'none'
+      });
+      // 或者可以跳转到个人信息编辑页面（如果有的话）
+      // wx.navigateTo({
+      //   url: '/pages/profile/profile'
+      // });
+    } else {
+      // 未登录，跳转到登录页面
+      wx.navigateTo({
+        url: '/pages/auth/auth'
+      });
+    }
+  },
+
+  // 退出登录
+  logout() {
+    wx.showModal({
+      title: '提示',
+      content: '确定要退出登录吗？',
+      success: (res) => {
+        if (res.confirm) {
+          // 调用app的登出方法
+          const app = getApp();
+          app.logout();
+          
+          // 更新页面数据
+          this.setData({
+            userInfo: {
+              nickName: '点击登录',
+              avatarUrl: '/images/default-avatar.png'
+            },
+            stats: {
+              totalTasks: 0,
+              totalCheckins: 0,
+              maxStreak: 0,
+              thisMonth: 0,
+              friendCount: 0,
+              messageCount: 0,
+              notCheckedInFriends: 0
+            },
+            currentUser: null
+          });
+          
+          // 跳转到登录页面
+          wx.redirectTo({
+            url: '/pages/auth/auth'
+          });
+        }
+      }
+    });
+  },
+
+  loadStats() {
+    this.ensureLogin().then((userId) => {
+      // 从Flask后端获取用户统计数据
+      api.getStats(userId)
+        .then(res => {
+          // 更新统计数据
+          this.setData({
+            'stats.totalCheckins': res.total_checkins || 0,
+            'stats.thisMonth': res.recent_checkins ? res.recent_checkins.length : 0
+          })
+        })
+        .catch(err => {
+          console.error('获取统计数据失败', err)
+        })
+    }).catch(err => {
+      console.error('未登录无法加载统计数据', err)
     })
+  },
+
+  loadTodayTip() {
+    // 每日提示，可以随机显示不同的励志语句
+    const tips = [
+      '坚持就是胜利，今天也要加油哦！',
+      '每一个小目标的达成，都是大成就的开始！',
+      '今天的努力，是为了明天更好的自己！',
+      '千里之行，始于足下，加油！',
+      '每一次坚持，都在为未来积累力量！'
+    ]
+    
+    const randomIndex = Math.floor(Math.random() * tips.length)
+    this.setData({
+      todayTip: tips[randomIndex]
+    })
+  },
+
+  // 跳转到打卡统计页面
+  goToRecords() {
+    wx.switchTab({
+      url: '/pages/index/index'
+    });
+  },
+
+  // 跳转到设置页面
+  goToSettings() {
+    wx.navigateTo({
+      url: '/pages/settings/settings'
+    });
+  },
+
+  // 分享给好友
+  onShareAppMessage() {
+    const app = getApp();
+    const currentUser = app.globalData.currentUser;
+    
+    let sharePath = '/pages/index/index';
+    if (currentUser && currentUser.id) {
+      // 包含推荐人ID
+      sharePath = `/pages/auth/auth?referrer_id=${currentUser.id}`;
+    }
+    
+    return {
+      title: '邀请你加入人生打卡计划',
+      path: sharePath,
+      imageUrl: '/images/share-image.jpg' // 如果有分享图片的话
+    }
+  },
+  
+  // 分享到朋友圈
+  onShareTimeline() {
+    const app = getApp();
+    const currentUser = app.globalData.currentUser;
+    
+    let sharePath = '/pages/index/index';
+    if (currentUser && currentUser.id) {
+      // 包含推荐人ID
+      sharePath = `/pages/auth/auth?referrer_id=${currentUser.id}`;
+    }
+    
+    return {
+      title: '坚持打卡，成就更好的自己',
+      query: `referrer_id=${currentUser?.id || ''}`
+    }
+  },
+
+  goToCheckedHistory(){
+    wx.switchTab({
+      url: '/pages/index/index'
+    });
+  },
+
+  goToAllFriends(){
+    wx.switchTab({  
+      url: '/pages/friends/friends'
+    });
+  },
+
+  goToMessages(){
+    wx.navigateTo({
+      url: '/pages/messages/messages'
+    });
+  },
+
+  // 提醒未打卡好友
+  remindNotCheckedInFriends() {
+    // 先检查登录状态
+    const app = getApp();
+    if (!app.globalData.currentUser || !app.globalData.currentUser.id) {
+      wx.showToast({
+        title: '请先登录',
+        icon: 'none'
+      });
+      // 跳转到登录页面
+      wx.redirectTo({
+        url: '/pages/auth/auth'
+      });
+      return;
+    }
+    
+    const userId = app.globalData.currentUser.id;
+    
+    // 获取未打卡的好友列表
+    api.getNotCheckedInFriends(userId)
+      .then(friends => {
+        if (!friends || friends.length === 0) {
+          wx.showToast({
+            title: '没有未打卡的好友',
+            icon: 'none'
+          });
+          return;
+        }
+        
+        // 询问是否提醒好友
+        wx.showModal({
+          title: '提醒未打卡好友',
+          content: `发现${friends.length}位好友今天还没打卡，是否提醒他们？`,
+          success: (res) => {
+            if (res.confirm) {
+              // 这里可以实现批量提醒好友的逻辑
+              // 目前模拟提醒成功
+              wx.showToast({
+                title: `已提醒${friends.length}位好友`,
+                icon: 'success'
+              });
+              
+              // 刷新统计数据
+              this.loadStats();
+            }
+          }
+        });
+      })
+      .catch(err => {
+        console.error('获取未打卡好友列表失败', err);
+        wx.showToast({
+          title: '获取好友列表失败',
+          icon: 'none'
+        });
+      });
   },
 
   // 确保用户已登录
   ensureLogin() {
     return new Promise((resolve, reject) => {
       const app = getApp()
-      if (app.globalData.openid) {
+      if (app.globalData.currentUser) {
         // 已登录
-        resolve(app.globalData.openid)
+        resolve(app.globalData.currentUser.id)
       } else {
-        // 未登录，尝试登录
-        app.autoLogin().then(openid => {
-          resolve(openid)
-        }).catch(err => {
-          // 登录失败，引导用户授权
-          this.navigateToAuth()
-          reject(err)
+        // 未登录，跳转到登录页面
+        wx.redirectTo({
+          url: '/pages/auth/auth'
         })
+        reject(new Error('未登录'))
       }
     })
   },
 
-  // 导航到授权页面
-  navigateToAuth() {
-    wx.navigateTo({
-      url: '/pages/auth/auth'
-    })
-  },
-
-  loadStats() {
-    const now = new Date()
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-
-    db.collection('checkin_tasks')
-      .count()
-      .then(res => {
-        this.setData({
-          'stats.totalTasks': res.total
-        })
-      })
-
-    db.collection('checkin_records')
-      .count()
-      .then(res => {
-        this.setData({
-          'stats.totalCheckins': res.total
-        })
-      })
-
-    db.collection('checkin_records')
-      .where({
-        checkTime: _.gte(monthStart)
-      })
-      .count()
-      .then(res => {
-        this.setData({
-          'stats.thisMonth': res.total
-        })
-      })
-
-    db.collection('checkin_stats')
-      .doc('user_stats')
-      .get()
-      .then(res => {
-        this.setData({
-          'stats.maxStreak': res.data.maxStreak || 0
-        })
-      })
-      .catch(() => {})
-
-    // 获取好友统计数据
-    this.loadFriendStats()
-  },
-
-  loadFriendStats() {
-    // 默认值：如果没有获取到数据或出错，显示默认值
-    const defaultFriendCount = 0
-    const defaultNotCheckedInFriends = 0
+  // 分享功能
+  onShareAppMessage() {
+    const app = getApp();
+    const currentUser = app.globalData.currentUser;
     
-    // 获取好友总数
-    db.collection('friends_list')
-      .where({
-        _openid: db.command.eq(wx.getStorageSync('openid') || '')
-      })
-      .count()
-      .then(countRes => {
-        const friendCount = countRes.total || 0
-        
-        // 获取未打卡的好友数量
-        db.collection('friends_list')
-          .where({
-            _openid: db.command.eq(wx.getStorageSync('openid') || '')
-          })
-          .get()
-          .then(friendsRes => {
-            if (friendsRes.data && friendsRes.data.length > 0) {
-              const friendIds = friendsRes.data.map(friend => friend.openid)
-              
-              // 查询这些好友今天是否已打卡（假设检查今天是否有打卡记录）
-              const today = new Date()
-              today.setHours(0, 0, 0, 0)
-              
-              db.collection('checkin_records')
-                .where({
-                  _openid: db.command.in(friendIds),
-                  checkTime: _.gte(today)
-                })
-                .distinct('_openid')
-                .then(checkedInFriendsRes => {
-                  const checkedInFriendsCount = checkedInFriendsRes.list ? checkedInFriendsRes.list.length : 0
-                  const notCheckedInFriends = friendCount - checkedInFriendsCount
-                  
-                  this.setData({
-                    'stats.friendCount': friendCount,
-                    'stats.notCheckedInFriends': Math.max(notCheckedInFriends, 0)
-                  })
-                })
-                .catch(err => {
-                  console.error('获取已打卡好友数失败', err)
-                  this.setData({
-                    'stats.friendCount': friendCount,
-                    'stats.notCheckedInFriends': defaultNotCheckedInFriends
-                  })
-                })
-            } else {
-              // 没有好友
-              this.setData({
-                'stats.friendCount': friendCount,
-                'stats.notCheckedInFriends': defaultNotCheckedInFriends
-              })
+    if (currentUser) {
+      return {
+        title: '一起来打卡吧！',
+        path: `/pages/add/add?referrer=${currentUser.id}`, // 传递当前用户的ID作为推荐人
+        imageUrl: '/images/share-image.jpg' // 可以自定义分享图片
+      };
+    } else {
+      return {
+        title: '人生打卡小程序',
+        path: '/pages/add/add',
+        imageUrl: '/images/share-image.jpg'
+      };
+    }
+  },
+
+  // 页面显示时检查是否有推荐人参数
+  onShow() {
+    // 每次进入页面都检查登录状态并刷新数据
+    this.checkLoginStatus();
+    
+    // 获取页面参数
+    const pages = getCurrentPages();
+    const currentPage = pages[pages.length - 1];
+    const options = currentPage.options;
+    
+    if (options.referrer) {
+      // 如果是通过分享链接进入，且当前用户不是推荐人，则尝试建立好友关系
+      this.handleReferral(options.referrer);
+    }
+  },
+
+  // 处理推荐人逻辑
+  handleReferral(referrerId) {
+    this.ensureLogin().then((currentUserId) => {
+      if (parseInt(currentUserId) !== parseInt(referrerId)) {
+        // 检查是否已经是好友
+        this.checkFriendship(currentUserId, referrerId)
+          .then(isFriend => {
+            if (!isFriend) {
+              // 如果还不是好友，发起添加好友请求
+              this.addFriend(parseInt(referrerId));
             }
           })
           .catch(err => {
-            console.error('获取好友列表失败', err)
-            this.setData({
-              'stats.friendCount': defaultFriendCount,
-              'stats.notCheckedInFriends': defaultNotCheckedInFriends
-            })
-          })
-      })
-      .catch(err => {
-        console.error('获取好友总数失败', err)
-        this.setData({
-          'stats.friendCount': defaultFriendCount,
-          'stats.notCheckedInFriends': defaultNotCheckedInFriends
-        })
-      })
-  },
-
-  loadTodayTip() {
-    const tips = [
-      '坚持就是胜利，今天也要加油哦！',
-      '每一个小小的进步，都是成功的基石。',
-      '不要等待机会，而要创造机会。',
-      '今天的努力，是明天的收获。',
-      '自律给我自由，打卡成就更好的自己。',
-      '千里之行，始于足下。',
-      '不积跬步，无以至千里。',
-      '每天进步一点点，成功就在眼前。'
-    ]
-    const today = new Date().getDate()
-    const index = today % tips.length
-    this.setData({
-      todayTip: tips[index]
-    })
-  },
-
-  goToRecords() {
-    this.ensureLogin().then(() => {
-      wx.switchTab({
-        url: '/pages/index/index'
-      })
-    }).catch(err => {
-      console.error('未登录无法跳转', err)
-    })
-  },
-
-  goToAchievements() {
-    wx.showToast({
-      title: '功能开发中',
-      icon: 'none'
-    })
-  },
-
-  goToSettings() {
-    this.ensureLogin().then(() => {
-      wx.showActionSheet({
-        itemList: ['关于我们', '清除缓存', '联系客服'],
-        success: res => {
-          if (res.tapIndex === 0) {
-            wx.showModal({
-              title: '关于我们',
-              content: '人生打卡小程序，帮助你养成好习惯，记录每一个重要时刻。',
-              showCancel: false
-            })
-          } else if (res.tapIndex === 1) {
-            wx.showLoading({ title: '清除中...' })
-            setTimeout(() => {
-              wx.hideLoading()
-              wx.showToast({
-                title: '清除成功',
-                icon: 'success'
-              })
-            }, 1000)
-          } else if (res.tapIndex === 2) {
-            wx.showModal({
-              title: '联系客服',
-              content: '如有问题，请添加客服微信：life_checkin',
-              showCancel: false
-            })
-          }
-        }
-      })
-    }).catch(err => {
-      console.error('未登录无法进入设置', err)
-    })
-  },
-
-  // 提醒未打卡好友
-  remindNotCheckedInFriends() {
-    this.ensureLogin().then(() => {
-      // 检查是否有未打卡的好友
-      if (this.data.stats.notCheckedInFriends <= 0) {
-        wx.showToast({
-          title: '没有需要提醒的好友',
-          icon: 'none'
-        })
-        return
+            console.error('检查好友关系失败', err);
+          });
       }
+    }).catch(err => {
+      console.error('未登录无法处理推荐', err);
+    });
+  },
 
-      // 提示用户确认提醒操作
-      wx.showModal({
-        title: '提醒未打卡好友',
-        content: `确定要提醒 ${this.data.stats.notCheckedInFriends} 位未打卡的好友吗？`,
-        confirmText: '立即提醒',
-        cancelText: '暂不提醒',
-        success: (res) => {
-          if (res.confirm) {
-            // 由于微信小程序的限制，无法直接发送模板消息给好友
-            // 可以引导用户分享小程序给好友
-            wx.showModal({
-              title: '提醒好友打卡',
-              content: '点击确定分享小程序给未打卡的好友，提醒他们打卡',
-              success: (modalRes) => {
-                if (modalRes.confirm) {
-                  // 调用分享功能，让用户主动分享给好友
-                  this.triggerShareToFriends()
+  // 检查好友关系
+  checkFriendship(userId, friendId) {
+    return new Promise((resolve, reject) => {
+      api.getFriends(userId)
+        .then(friends => {
+          const isFriend = friends.some(friend => friend.id === friendId);
+          resolve(isFriend);
+        })
+        .catch(err => {
+          reject(err);
+        });
+    });
+  },
+
+  // 添加好友
+  addFriend(friendId) {
+    // 在这里可以发起好友请求或直接建立好友关系
+    // 简化处理：直接建立好友关系
+    wx.showModal({
+      title: '添加好友',
+      content: '您通过分享链接进入了小程序，是否添加分享者为好友？',
+      confirmText: '添加',
+      cancelText: '取消',
+      success: (res) => {
+        if (res.confirm) {
+          this.ensureLogin().then((userId) => {
+            // 调用后端API添加好友关系
+            api.addFriend(userId, friendId)
+              .then(response => {
+                if (response.success) {
+                  wx.showToast({
+                    title: response.message || '好友添加成功',
+                    icon: 'success'
+                  });
+                } else {
+                  wx.showToast({
+                    title: response.error || '添加好友失败',
+                    icon: 'none'
+                  });
                 }
-              }
-            })
-          }
+              })
+              .catch(err => {
+                console.error('添加好友失败', err);
+                wx.showToast({
+                  title: '添加好友失败',
+                  icon: 'none'
+                });
+              });
+          });
         }
-      })
-    }).catch(err => {
-      console.error('未登录无法提醒好友', err)
-    })
-  },
-
-  // 触发分享给好友
-  triggerShareToFriends() {
-    // 显示分享菜单，让用户选择分享给好友
-    wx.showShareMenu({
-      withShareTicket: true,
-      menus: ['shareAppMessage'], // 只显示分享给朋友选项
-      success: () => {
-        // 监听用户点击右上角菜单中的转发按钮
-        wx.onShareAppMessage(() => {
-          return {
-            title: '提醒：你今天还没有打卡哦！',
-            path: '/pages/index/index',
-            imageUrl: '/images/share-image.jpg' // 如果有分享图片的话
-          }
-        })
       }
-    })
+    });
   }
 })
