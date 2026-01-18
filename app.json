@@ -7,7 +7,8 @@
     "pages/auth/auth",
     "pages/settings/settings",
     "pages/friends/friends",
-    "pages/messages/messages"
+    "pages/messages/messages",
+    "pages/profile/profile"
   ],
   "window": {
     "backgroundTextStyle": "light",

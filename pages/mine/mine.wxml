@@ -1,7 +1,7 @@
 <view class="container">
   <view class="user-header" bindtap="goToAuth">
     <view class="avatar">
-      <image src="{{userInfo.avatarUrl}}" mode="aspectFill"></image>
+      <image src="{{userInfo.avatarUrl || '/images/default-avatar.png'}}" mode="aspectFill"></image>
     </view>
     <view class="user-info">
       <text class="nickname">{{userInfo.nickName}}</text>
@@ -36,6 +36,11 @@
       <text class="menu-arrow">›</text>
     </view>
     -->
+    <view class="menu-item" bindtap="goToProfile">
+      <view class="menu-icon">👤</view>
+      <text class="menu-text">个人信息</text>
+      <text class="menu-arrow">›</text>
+    </view>
     <view class="menu-item" bindtap="goToSettings">
       <view class="menu-icon">⚙️</view>
       <text class="menu-text">设置</text>

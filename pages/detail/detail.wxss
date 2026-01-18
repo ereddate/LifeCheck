@@ -9,6 +9,8 @@
   padding: 60rpx 40rpx 80rpx;
   text-align: center;
   color: #fff;
+  border-top-left-radius:20rpx;
+  border-top-right-radius:20rpx;
 }
 
 .header-icon {
@@ -82,7 +84,6 @@
 
 .btn-checkin {
   width: 100%;
-  height: 88rpx;
   line-height: 88rpx;
   background: #07C160;
   color: #fff;
@@ -100,7 +101,6 @@
 
 .btn-delete {
   width: 100%;
-  height: 88rpx;
   line-height: 88rpx;
   background: #fff;
   color: #ff4d4f;

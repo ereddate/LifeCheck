@@ -46,6 +46,33 @@ Page({
     }
   },
 
+  // 下拉刷新
+  onPullDownRefresh() {
+    console.log('开始下拉刷新');
+    this.checkLoginStatus(); // 重新检查登录状态并加载数据
+    
+    // 直接调用加载数据函数，确保所有数据都被刷新
+    const app = getApp();
+    if (app.isLogin()) {
+      const currentUser = app.globalData.currentUser;
+      if (currentUser) {
+        this.setData({
+          currentUser: currentUser
+        });
+        this.loadUserData();
+      }
+    }
+    
+    // 数据加载完成后停止下拉刷新动画
+    setTimeout(() => {
+      wx.stopPullDownRefresh({
+        success: () => {
+          console.log('停止下拉刷新成功');
+        }
+      });
+    }, 1500); // 增加延迟时间，确保数据加载完成
+  },
+
   // 加载用户数据
   loadUserData() {
     const currentUser = this.data.currentUser;
@@ -59,14 +86,30 @@ Page({
       .then(stats => {
         this.setData({
           'stats.totalCheckins': stats.total_checkins || 0,
-          'stats.thisMonth': stats.recent_checkins ? stats.recent_checkins.length : 0
+          'stats.thisMonth': stats.recent_checkins ? stats.recent_checkins.length : 0,
+          'stats.friendCount': stats.friend_count || 0
         });
       })
       .catch(err => {
         console.error('获取用户统计数据失败', err);
         this.setData({
           'stats.totalCheckins': 0,
-          'stats.thisMonth': 0
+          'stats.thisMonth': 0,
+          'stats.friendCount': 0
+        });
+      });
+
+    // 获取未读消息数量
+    api.getUnreadMessagesCount(currentUser.id)
+      .then(countData => {
+        this.setData({
+          'stats.messageCount': countData.unread_count || 0
+        });
+      })
+      .catch(err => {
+        console.error('获取未读消息数量失败', err);
+        this.setData({
+          'stats.messageCount': 0
         });
       });
 
@@ -177,6 +220,13 @@ Page({
   goToRecords() {
     wx.switchTab({
       url: '/pages/index/index'
+    });
+  },
+
+  // 跳转到个人信息页面
+  goToProfile() {
+    wx.navigateTo({
+      url: '/pages/profile/profile'
     });
   },
 

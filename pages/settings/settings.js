@@ -3,7 +3,8 @@ const api = require('../../api.js');
 Page({
   data: {
     userInfo: null,
-    showPasswordModal: false  // 控制修改密码弹窗显示
+    showPasswordModal: false,  // 控制修改密码弹窗显示
+    version: '1.0.0'
   },
 
   onLoad() {
@@ -165,6 +166,20 @@ Page({
           });
         }
       }
+    });
+  },
+  
+  // 跳转到个人信息页面
+  goToProfile() {
+    wx.navigateTo({
+      url: '/pages/profile/profile'
+    });
+  },
+  
+  // 跳转到关于页面
+  goToAbout() {
+    wx.navigateTo({
+      url: '/pages/about/about'
     });
   }
 })

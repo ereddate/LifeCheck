@@ -10,6 +10,7 @@ CREATE TABLE users (
     email TEXT,
     nickname TEXT,
     avatar_url TEXT,
+    phone TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

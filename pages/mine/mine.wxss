@@ -9,11 +9,10 @@
   align-items: center;
 }
 
-.avatar {
-  width: 120rpx;
-  height: 120rpx;
-  border-radius: 60rpx;
-  overflow: hidden;
+.avatar image{
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 50%;
   border: 4rpx solid rgba(255, 255, 255, 0.3);
   margin-right: 30rpx;
   background: #fff;

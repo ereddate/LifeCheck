@@ -3,15 +3,10 @@
     <view class="header-icon">
       <text class="iconfont">📌</text>
     </view>
-    <text class="detail-title">{{task.title}}</text>
     <view class="detail-tag {{task.type}}">{{task.typeName}}</view>
   </view>
 
   <view class="detail-card card">
-    <view class="card-row">
-      <text class="row-label">描述</text>
-      <text class="row-value">{{task.description}}</text>
-    </view>
     <view class="card-row">
       <text class="row-label">创建时间</text>
       <text class="row-value">{{task.createTime}}</text>
@@ -34,7 +29,7 @@
     <button class="btn-checkin {{task.checkedToday ? 'checked' : ''}}" bindtap="doCheckin">
       {{task.checkedToday ? '今日已打卡' : '立即打卡'}}
     </button>
-    <button class="btn-delete" bindtap="deleteTask">删除打卡</button>
+    <!--button class="btn-delete" bindtap="deleteTask">删除打卡</button-->
   </view>
 
   <view class="history-section">

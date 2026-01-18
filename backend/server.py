@@ -1,20 +1,56 @@
 from flask import Flask, request, jsonify, g
+from flask_cors import CORS
 import sqlite3
 import json
 import os
+import re
 from datetime import datetime
 import hashlib
 import secrets
 from werkzeug.security import generate_password_hash, check_password_hash
+import bleach  # 用于清理HTML内容
+from functools import wraps
+import time
+from collections import defaultdict, deque
 
 app = Flask(__name__)
+CORS(app)  # 启用跨域支持
 DATABASE = '打卡记录.db'
+
+# 速率限制存储
+rate_limits = defaultdict(lambda: deque())
+
+def rate_limit(max_requests=10, window=60):
+    """简单的速率限制装饰器"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            client_ip = request.remote_addr
+            now = time.time()
+            
+            # 清理过期的请求记录
+            while rate_limits[client_ip] and rate_limits[client_ip][0] <= now - window:
+                rate_limits[client_ip].popleft()
+            
+            # 检查是否超过限制
+            if len(rate_limits[client_ip]) >= max_requests:
+                return jsonify({"error": "请求过于频繁，请稍后再试"}), 429
+            
+            # 记录当前请求
+            rate_limits[client_ip].append(now)
+            
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
 
 def get_db():
     db = getattr(g, '_database', None)
     if db is None:
         db = g._database = sqlite3.connect(DATABASE)
         db.row_factory = sqlite3.Row  # 使结果可以像字典一样访问
+        # 设置连接属性以提高性能和安全性
+        db.execute('PRAGMA foreign_keys = ON')  # 启用外键约束
+        db.execute('PRAGMA journal_mode = WAL')  # 启用WAL模式以提高并发性能
     return db
 
 def init_db():
@@ -26,22 +62,38 @@ def init_db():
         db.commit()
 
 def query_db(query, args=(), one=False):
+    """安全的数据库查询函数，使用参数化查询防止SQL注入"""
     cur = get_db().execute(query, args)
     rv = cur.fetchall()
     cur.close()
     return (rv[0] if rv else None) if one else rv
 
 def insert_db(query, args=()):
+    """安全的数据库插入函数"""
     db = get_db()
     cur = db.execute(query, args)
     db.commit()
     return cur.lastrowid
 
 def update_db(query, args=()):
+    """安全的数据库更新函数"""
     db = get_db()
     cur = db.execute(query, args)
     db.commit()
     return cur.rowcount
+
+def sanitize_input(text, max_length=255):
+    """清理和验证输入数据"""
+    if not text:
+        return text
+    # 去除首尾空白字符
+    text = text.strip()
+    # 限制最大长度
+    if len(text) > max_length:
+        text = text[:max_length]
+    # 使用bleach清理潜在危险的HTML标签
+    text = bleach.clean(text, strip=True)
+    return text
 
 @app.teardown_appcontext
 def close_connection(exception):
@@ -50,36 +102,61 @@ def close_connection(exception):
         db.close()
 
 @app.route('/')
+@rate_limit(max_requests=100, window=60)  # 对首页访问进行速率限制
 def hello():
     return jsonify({"message": "欢迎使用人生打卡后端服务!"})
 
 # 用户注册
 @app.route('/api/register', methods=['POST'])
+@rate_limit(max_requests=5, window=300)  # 注册接口限制更严格
 def register():
     try:
         data = request.get_json()
         
+        # 输入验证和清理
+        if not data:
+            return jsonify({"error": "无效的JSON数据"}), 400
+        
         # 验证必需字段
-        if not data.get('username') or not data.get('password'):
+        username = data.get('username')
+        password = data.get('password')
+        
+        if not username or not password:
             return jsonify({"error": "用户名和密码不能为空"}), 400
         
+        # 清理输入
+        username = sanitize_input(username, max_length=50)
+        nickname = sanitize_input(data.get('nickname', username), max_length=100)
+        email = sanitize_input(data.get('email', ''), max_length=100)
+        avatar_url = sanitize_input(data.get('avatar_url', '/images/default-avatar.png'), max_length=255)
+        
+        # 验证输入格式
+        if not re.match(r'^[a-zA-Z0-9_\u4e00-\u9fa5]{3,20}$', username):
+            return jsonify({"error": "用户名只能包含字母、数字、下划线和中文，长度3-20位"}), 400
+        
+        if len(password) < 6:
+            return jsonify({"error": "密码长度至少6位"}), 400
+        
+        if email and not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
+            return jsonify({"error": "邮箱格式不正确"}), 400
+        
         # 检查用户名是否已存在
-        existing_user = query_db('SELECT id FROM users WHERE username = ?', [data['username']], one=True)
+        existing_user = query_db('SELECT id FROM users WHERE username = ?', [username], one=True)
         if existing_user:
             return jsonify({"error": "用户名已存在"}), 400
         
-        # 生成密码哈希
-        password_hash = generate_password_hash(data['password'])
+        # 生成更强的密码哈希
+        password_hash = generate_password_hash(password, method='pbkdf2:sha256:5000', salt_length=12)
         
         # 创建新用户
         user_id = insert_db(
             'INSERT INTO users (username, password_hash, email, nickname, avatar_url) VALUES (?, ?, ?, ?, ?)',
-            [data['username'], password_hash, data.get('email', ''), data.get('nickname', data['username']), data.get('avatar_url', '/images/default-avatar.png')]
+            [username, password_hash, email, nickname, avatar_url]
         )
         
         # 检查是否有推荐人ID，建立好友关系
         referrer_id = data.get('referrer_id')
-        if referrer_id and referrer_id != user_id:
+        if referrer_id and isinstance(referrer_id, int) and referrer_id != user_id:
             # 检查推荐人是否存在
             referrer = query_db('SELECT id FROM users WHERE id = ?', [referrer_id], one=True)
             if referrer:
@@ -96,21 +173,31 @@ def register():
 
 # 用户登录
 @app.route('/api/login', methods=['POST'])
+@rate_limit(max_requests=10, window=60)  # 登录接口速率限制
 def login():
     try:
         data = request.get_json()
         
-        # 验证必需字段
-        if not data.get('username') or not data.get('password'):
+        # 输入验证
+        if not data:
+            return jsonify({"error": "无效的JSON数据"}), 400
+        
+        username = data.get('username')
+        password = data.get('password')
+        
+        if not username or not password:
             return jsonify({"error": "用户名和密码不能为空"}), 400
+        
+        # 清理输入
+        username = sanitize_input(username, max_length=50)
         
         # 查找用户
         user = query_db(
             'SELECT id, username, password_hash, nickname, email, avatar_url FROM users WHERE username = ?', 
-            [data['username']], one=True
+            [username], one=True
         )
         
-        if not user or not check_password_hash(user['password_hash'], data['password']):
+        if not user or not check_password_hash(user['password_hash'], password):
             return jsonify({"error": "用户名或密码错误"}), 401
         
         # 返回用户信息（不包括密码哈希）
@@ -128,9 +215,15 @@ def login():
 
 # 获取所有打卡记录
 @app.route('/api/records', methods=['GET'])
+@rate_limit(max_requests=60, window=60)
 def get_records():
     try:
-        records = query_db('SELECT * FROM records ORDER BY create_time DESC')
+        # 添加分页支持以提高性能
+        page = request.args.get('page', 1, type=int)
+        page_size = min(request.args.get('page_size', 20, type=int), 100)  # 最大页面大小限制
+        offset = (page - 1) * page_size
+        
+        records = query_db('SELECT * FROM records ORDER BY create_time DESC LIMIT ? OFFSET ?', [page_size, offset])
         # 将sqlite3.Row对象转换为字典
         records_list = [dict(record) for record in records]
         return jsonify(records_list)
@@ -139,8 +232,13 @@ def get_records():
 
 # 获取单个用户的打卡记录
 @app.route('/api/user/<int:user_id>/records', methods=['GET'])
+@rate_limit(max_requests=60, window=60)
 def get_user_records(user_id):
     try:
+        # 验证用户ID范围
+        if user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
+        
         records = query_db('SELECT * FROM records WHERE user_id = ? ORDER BY create_time DESC', [user_id])
         records_list = [dict(record) for record in records]
         return jsonify(records_list)
@@ -149,78 +247,112 @@ def get_user_records(user_id):
 
 # 用户打卡
 @app.route('/api/checkin', methods=['POST'])
+@rate_limit(max_requests=30, window=60)
 def do_checkin():
     try:
         data = request.get_json()
         
+        if not data:
+            return jsonify({"error": "无效的JSON数据"}), 400
+        
+        user_id = data.get('user_id')
+        title = data.get('title')
+        
         # 验证必需字段
-        if not data.get('user_id') or not data.get('title'):
+        if not user_id or not title:
             return jsonify({"error": "缺少必需字段"}), 400
+        
+        # 验证数据类型
+        if not isinstance(user_id, int) or user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
+        
+        # 清理输入
+        title = sanitize_input(title, max_length=200)
+        
+        if len(title) < 1:
+            return jsonify({"error": "标题不能为空"}), 400
         
         # 检查用户今天是否已经打过卡
         today = datetime.now().strftime('%Y-%m-%d')
-        user_id = data.get('user_id')
-        
-        existing_checkin = query_db(
-            'SELECT id FROM records WHERE user_id = ? AND date = ? LIMIT 1', 
-            [user_id, today], 
-            one=True
+        existing_record = query_db(
+            'SELECT id FROM records WHERE user_id = ? AND date = ?', 
+            [user_id, today], one=True
         )
         
-        if existing_checkin:
+        if existing_record:
             return jsonify({"error": "今天已经打过卡了"}), 400
         
-        # 插入新的打卡记录
+        # 检查用户是否存在
+        user = query_db('SELECT id FROM users WHERE id = ?', [user_id], one=True)
+        if not user:
+            return jsonify({"error": "用户不存在"}), 404
+        
+        # 创建打卡记录
         record_id = insert_db(
-            'INSERT INTO records (user_id, title, content, date, create_time) VALUES (?, ?, ?, ?, ?)',
-            [data.get('user_id'), data.get('title'), data.get('content', ''), 
-             data.get('date', today), 
-             datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
+            'INSERT INTO records (user_id, title, date, create_time) VALUES (?, ?, ?, ?)',
+            [user_id, title, today, datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
         )
         
-        # 获取刚刚插入的记录
-        new_record = query_db('SELECT * FROM records WHERE id = ?', [record_id], one=True)
-        return jsonify({"success": True, "record": dict(new_record)}), 201
+        # 获取完整的打卡记录
+        record = query_db('SELECT * FROM records WHERE id = ?', [record_id], one=True)
+        
+        return jsonify({"success": True, "record": dict(record)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-
 # 创建打卡任务
 @app.route('/api/task', methods=['POST'])
+@rate_limit(max_requests=20, window=60)
 def create_task():
     try:
         data = request.get_json()
         
+        if not data:
+            return jsonify({"error": "无效的JSON数据"}), 400
+        
+        user_id = data.get('user_id')
+        title = data.get('title')
+        
         # 验证必需字段
-        if not data.get('user_id') or not data.get('title'):
+        if not user_id or not title:
             return jsonify({"error": "缺少必需字段"}), 400
+        
+        # 验证数据类型
+        if not isinstance(user_id, int) or user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
+        
+        # 清理输入
+        title = sanitize_input(title, max_length=200)
+        
+        if len(title) < 1:
+            return jsonify({"error": "任务标题不能为空"}), 400
+        
+        # 检查用户是否存在
+        user = query_db('SELECT id FROM users WHERE id = ?', [user_id], one=True)
+        if not user:
+            return jsonify({"error": "用户不存在"}), 404
         
         # 插入新的打卡任务
         task_id = insert_db(
-            '''INSERT INTO checkin_tasks 
-               (user_id, title, description, type, target_days, remind_time, created_at, updated_at) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-            [data.get('user_id'), 
-             data.get('title'), 
-             data.get('description', ''), 
-             data.get('type', 'daily'),
-             data.get('target_days', 30),
-             data.get('remind_time', '08:00'),
-             datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-             datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
+            'INSERT INTO checkin_tasks (user_id, title, created_at) VALUES (?, ?, ?)',
+            [user_id, title, datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
         )
         
-        # 获取刚刚插入的任务
-        new_task = query_db('SELECT * FROM checkin_tasks WHERE id = ?', [task_id], one=True)
-        return jsonify({"success": True, "task": dict(new_task)}), 201
+        # 获取创建的任务信息
+        task = query_db('SELECT * FROM checkin_tasks WHERE id = ?', [task_id], one=True)
+        
+        return jsonify({"success": True, "task": dict(task)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 获取用户的所有打卡任务
+# 获取用户的打卡任务
 @app.route('/api/user/<int:user_id>/tasks', methods=['GET'])
+@rate_limit(max_requests=60, window=60)
 def get_user_tasks(user_id):
     try:
+        if user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
+        
         tasks = query_db('SELECT * FROM checkin_tasks WHERE user_id = ? ORDER BY created_at DESC', [user_id])
         tasks_list = [dict(task) for task in tasks]
         return jsonify(tasks_list)
@@ -229,8 +361,12 @@ def get_user_tasks(user_id):
 
 # 删除打卡任务
 @app.route('/api/task/<int:task_id>', methods=['DELETE'])
+@rate_limit(max_requests=20, window=60)
 def delete_task(task_id):
     try:
+        if task_id <= 0:
+            return jsonify({"error": "无效的任务ID"}), 400
+        
         # 先检查任务是否存在
         task = query_db('SELECT id, user_id FROM checkin_tasks WHERE id = ?', [task_id], one=True)
         if not task:
@@ -240,54 +376,63 @@ def delete_task(task_id):
         rows_affected = update_db('DELETE FROM checkin_tasks WHERE id = ?', [task_id])
         
         if rows_affected > 0:
-            return jsonify({"success": True, "message": "任务已删除"}), 200
+            return jsonify({"success": True, "message": "任务删除成功"})
         else:
-            return jsonify({"error": "删除失败"}), 400
+            return jsonify({"error": "删除任务失败"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 修改用户密码
+# 修改密码
 @app.route('/api/change-password', methods=['POST'])
+@rate_limit(max_requests=5, window=300)
 def change_password():
     try:
         data = request.get_json()
         
-        # 验证必需字段
-        if not data.get('user_id') or not data.get('old_password') or not data.get('new_password'):
-            return jsonify({"error": "缺少必需字段"}), 400
+        if not data:
+            return jsonify({"error": "无效的JSON数据"}), 400
         
         user_id = data.get('user_id')
         old_password = data.get('old_password')
         new_password = data.get('new_password')
         
-        # 验证新密码长度
+        if not user_id or not old_password or not new_password:
+            return jsonify({"error": "缺少必需字段"}), 400
+        
+        if not isinstance(user_id, int) or user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
+        
         if len(new_password) < 6:
             return jsonify({"error": "新密码长度至少6位"}), 400
         
-        # 获取当前用户信息
+        # 获取用户信息
         user = query_db('SELECT id, password_hash FROM users WHERE id = ?', [user_id], one=True)
-        
         if not user:
             return jsonify({"error": "用户不存在"}), 404
         
-        # 验证旧密码
+        # 验证原密码
         if not check_password_hash(user['password_hash'], old_password):
-            return jsonify({"error": "原密码错误"}), 400
+            return jsonify({"error": "原密码错误"}), 401
+        
+        # 生成新密码哈希
+        new_password_hash = generate_password_hash(new_password, method='pbkdf2:sha256:5000', salt_length=12)
         
         # 更新密码
-        new_password_hash = generate_password_hash(new_password)
         update_db('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', 
-                  [new_password_hash, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id])
+                 [new_password_hash, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id])
         
-        return jsonify({"success": True, "message": "密码修改成功"}), 200
+        return jsonify({"success": True, "message": "密码修改成功"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 获取用户的好友列表
+# 获取用户好友列表
 @app.route('/api/user/<int:user_id>/friends', methods=['GET'])
-def get_friends(user_id):
+@rate_limit(max_requests=60, window=60)
+def get_user_friends(user_id):
     try:
-        # 查询用户的好友列表
+        if user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
+        
         friends = query_db('''
             SELECT u.id, u.username, u.nickname, u.avatar_url, f.status, f.created_at
             FROM friendships f
@@ -301,170 +446,76 @@ def get_friends(user_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 更新亲密度分数
-def update_intimacy_score(user_id, friend_id, action='interact'):
-    """更新用户间的亲密度分数"""
-    try:
-        # 根据不同行为给予不同分数
-        score_increment = 0
-        if action == 'remind':
-            score_increment = 5  # 提醒好友 +5分
-        elif action == 'interact':
-            score_increment = 1  # 一般互动 +1分
-        elif action == 'checkin_together':
-            score_increment = 3  # 同时打卡 +3分
-        
-        # 检查是否已有亲密度记录
-        existing_record = query_db('''
-            SELECT id, score FROM intimacy_scores WHERE user_id = ? AND friend_id = ?
-        ''', [user_id, friend_id], one=True)
-        
-        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        if existing_record:
-            # 更新现有记录
-            new_score = existing_record['score'] + score_increment
-            update_db('''
-                UPDATE intimacy_scores 
-                SET score = ?, last_interaction = ? 
-                WHERE user_id = ? AND friend_id = ?
-            ''', [new_score, current_time, user_id, friend_id])
-        else:
-            # 创建新记录
-            insert_db('''
-                INSERT INTO intimacy_scores (user_id, friend_id, score, last_interaction) 
-                VALUES (?, ?, ?, ?)
-            ''', [user_id, friend_id, score_increment, current_time])
-        
-        # 同时更新反向关系
-        existing_reverse = query_db('''
-            SELECT id, score FROM intimacy_scores WHERE user_id = ? AND friend_id = ?
-        ''', [friend_id, user_id], one=True)
-        
-        if existing_reverse:
-            # 更新现有记录
-            update_db('''
-                UPDATE intimacy_scores 
-                SET last_interaction = ? 
-                WHERE user_id = ? AND friend_id = ?
-            ''', [current_time, friend_id, user_id])
-        else:
-            # 创建新记录
-            insert_db('''
-                INSERT INTO intimacy_scores (user_id, friend_id, score, last_interaction) 
-                VALUES (?, ?, ?, ?)
-            ''', [friend_id, user_id, 0, current_time])
-        
-        return True
-    except Exception as e:
-        print(f"更新亲密度分数失败: {str(e)}")
-        return False
-
-# 获取用户未打卡的好友列表（按亲密度排序）
+# 获取用户未打卡的好友
 @app.route('/api/user/<int:user_id>/not-checked-in-friends', methods=['GET'])
+@rate_limit(max_requests=60, window=60)
 def get_not_checked_in_friends(user_id):
     try:
-        # 获取用户的好友ID列表
-        friend_ids = query_db('''
-            SELECT friend_id FROM friendships WHERE user_id = ?
-        ''', [user_id])
+        if user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
         
-        if not friend_ids:
-            return jsonify([])
-        
-        # 将好友ID转换为列表
-        friend_ids = [f['friend_id'] for f in friend_ids]
-        
-        # 构建查询语句以找出今天未打卡的好友
-        placeholders = ','.join(['?' for _ in friend_ids])
         today = datetime.now().strftime('%Y-%m-%d')
         
-        # 获取今天已打卡的好友
-        checked_in_friends = query_db(f'''
-            SELECT DISTINCT user_id FROM records WHERE user_id IN ({placeholders}) AND date = ?
-        ''', friend_ids + [today])
-        
-        checked_in_friend_ids = [f['user_id'] for f in checked_in_friends]
-        
-        # 获取今天未打卡的好友
-        not_checked_in_friend_ids = [fid for fid in friend_ids if fid not in checked_in_friend_ids]
-        
-        if not not_checked_in_friend_ids:
-            return jsonify([])
-        
-        # 构建查询语句获取未打卡好友的详细信息及亲密度
-        placeholders = ','.join(['?' for _ in not_checked_in_friend_ids])
-        not_checked_in_friends = query_db(f'''
-            SELECT u.id, u.username, u.nickname, u.avatar_url, 
-                   COALESCE(i.score, 0) as intimacy_score
-            FROM users u
-            LEFT JOIN intimacy_scores i ON u.id = i.friend_id AND i.user_id = ?
-            WHERE u.id IN ({placeholders})
-            ORDER BY COALESCE(i.score, 0) DESC
-        ''', [user_id] + not_checked_in_friend_ids)
+        not_checked_in_friends = query_db('''
+            SELECT u.id, u.username, u.nickname, u.avatar_url, f.created_at
+            FROM friendships f
+            JOIN users u ON f.friend_id = u.id
+            WHERE f.user_id = ?
+            AND f.friend_id NOT IN (
+                SELECT user_id FROM records WHERE date = ?
+            )
+            ORDER BY f.created_at DESC
+        ''', [user_id, today])
         
         not_checked_in_friends_list = [dict(friend) for friend in not_checked_in_friends]
         return jsonify(not_checked_in_friends_list)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 获取用户亲密度最高的未打卡好友列表
+# 获取用户高亲密度未打卡好友
 @app.route('/api/user/<int:user_id>/top-intimacy-not-checked-in-friends', methods=['GET'])
+@rate_limit(max_requests=20, window=60)
 def get_top_intimacy_not_checked_in_friends(user_id):
     try:
-        # 获取用户的好友ID列表
-        friend_ids = query_db('''
-            SELECT friend_id FROM friendships WHERE user_id = ?
-        ''', [user_id])
+        if user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
         
-        if not friend_ids:
-            return jsonify([])
-        
-        # 将好友ID转换为列表
-        friend_ids = [f['friend_id'] for f in friend_ids]
-        
-        # 构建查询语句以找出今天未打卡的好友
-        placeholders = ','.join(['?' for _ in friend_ids])
         today = datetime.now().strftime('%Y-%m-%d')
         
-        # 获取今天已打卡的好友
-        checked_in_friends = query_db(f'''
-            SELECT DISTINCT user_id FROM records WHERE user_id IN ({placeholders}) AND date = ?
-        ''', friend_ids + [today])
-        
-        checked_in_friend_ids = [f['user_id'] for f in checked_in_friends]
-        
-        # 获取今天未打卡的好友
-        not_checked_in_friend_ids = [fid for fid in friend_ids if fid not in checked_in_friend_ids]
-        
-        if not not_checked_in_friend_ids:
-            return jsonify([])
-        
-        # 构建查询语句获取未打卡好友的详细信息及亲密度，按亲密度降序排列，限制为前10名
-        placeholders = ','.join(['?' for _ in not_checked_in_friend_ids])
-        not_checked_in_friends = query_db(f'''
+        not_checked_in_friends = query_db('''
             SELECT u.id, u.username, u.nickname, u.avatar_url, 
-                   COALESCE(i.score, 0) as intimacy_score
-            FROM users u
+                   COALESCE(i.score, 0) as intimacy_score, f.created_at
+            FROM friendships f
+            JOIN users u ON f.friend_id = u.id
             LEFT JOIN intimacy_scores i ON u.id = i.friend_id AND i.user_id = ?
-            WHERE u.id IN ({placeholders})
-            ORDER BY COALESCE(i.score, 0) DESC
+            WHERE f.user_id = ?
+            AND f.friend_id NOT IN (
+                SELECT user_id FROM records WHERE date = ?
+            )
+            ORDER BY COALESCE(i.score, 0) DESC, f.created_at DESC
             LIMIT 10
-        ''', [user_id] + not_checked_in_friend_ids)
+        ''', [user_id, user_id, today])
         
         not_checked_in_friends_list = [dict(friend) for friend in not_checked_in_friends]
         return jsonify(not_checked_in_friends_list)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 获取用户的好友列表（支持分页）
+# 分页获取用户好友列表
 @app.route('/api/user/<int:user_id>/friends/paginated', methods=['GET'])
+@rate_limit(max_requests=60, window=60)
 def get_friends_paginated(user_id):
     try:
+        if user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
+        
         # 获取查询参数
         page = request.args.get('page', 1, type=int)
-        page_size = request.args.get('page_size', 20, type=int)
+        page_size = min(request.args.get('page_size', 20, type=int), 50)  # 限制最大页面大小
         offset = (page - 1) * page_size
+        
+        if page < 1 or page_size < 1:
+            return jsonify({"error": "无效的分页参数"}), 400
         
         # 查询用户的好友列表，包含亲密度分数，按亲密度降序排列
         friends = query_db('''
@@ -495,38 +546,59 @@ def get_friends_paginated(user_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 提醒好友打卡并更新亲密度
+# 提醒好友打卡
 @app.route('/api/remind-friend/<int:user_id>/<int:friend_id>', methods=['POST'])
+@rate_limit(max_requests=10, window=60)
 def remind_friend(user_id, friend_id):
     try:
-        # 更新亲密度分数
-        success = update_intimacy_score(user_id, friend_id, 'remind')
+        if user_id <= 0 or friend_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
         
-        if success:
-            # 创建提醒消息
-            insert_db('''
-                INSERT INTO messages (sender_id, receiver_id, type, content) 
-                VALUES (?, ?, ?, ?)
-            ''', [user_id, friend_id, 'remind', f'您的好友提醒您今天记得打卡'])
-            
-            return jsonify({"success": True, "message": "提醒已发送，亲密度已更新"})
-        else:
-            return jsonify({"success": False, "error": "操作失败"}), 500
+        if user_id == friend_id:
+            return jsonify({"error": "不能提醒自己"}), 400
+        
+        # 检查用户和好友是否存在，以及是否为好友关系
+        friendship = query_db('''
+            SELECT id FROM friendships WHERE user_id = ? AND friend_id = ? AND status = 'accepted'
+        ''', [user_id, friend_id], one=True)
+        
+        if not friendship:
+            return jsonify({"error": "用户之间不是好友关系"}), 400
+        
+        # 创建提醒消息
+        message_id = insert_db('''
+            INSERT INTO messages (sender_id, receiver_id, type, content, created_at) 
+            VALUES (?, ?, ?, ?, ?)
+        ''', [user_id, friend_id, 'remind', '您的好友提醒您今天记得打卡', datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
+        
+        # 更新亲密度分数
+        update_intimacy_score(user_id, friend_id, 1)  # 提醒好友增加1分亲密度
+        
+        return jsonify({"success": True, "message": "提醒发送成功"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 # 获取用户消息列表
 @app.route('/api/user/<int:user_id>/messages', methods=['GET'])
+@rate_limit(max_requests=60, window=60)
 def get_messages(user_id):
     try:
-        # 获取用户的消息列表，按时间倒序排列
+        if user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
+        
+        # 添加分页支持
+        page = request.args.get('page', 1, type=int)
+        page_size = min(request.args.get('page_size', 20, type=int), 100)
+        offset = (page - 1) * page_size
+        
         messages = query_db('''
-            SELECT m.*, u.nickname, u.avatar_url
+            SELECT m.*, u.username, u.nickname, u.avatar_url
             FROM messages m
             JOIN users u ON m.sender_id = u.id
             WHERE m.receiver_id = ?
             ORDER BY m.created_at DESC
-        ''', [user_id])
+            LIMIT ? OFFSET ?
+        ''', [user_id, page_size, offset])
         
         messages_list = [dict(msg) for msg in messages]
         return jsonify(messages_list)
@@ -535,26 +607,125 @@ def get_messages(user_id):
 
 # 标记消息为已读
 @app.route('/api/message/<int:message_id>/read', methods=['PUT'])
+@rate_limit(max_requests=30, window=60)
 def mark_message_read(message_id):
     try:
-        update_db('UPDATE messages SET read_status = 1 WHERE id = ?', [message_id])
-        return jsonify({"success": True})
+        if message_id <= 0:
+            return jsonify({"error": "无效的消息ID"}), 400
+        
+        rows_affected = update_db('UPDATE messages SET read_status = 1 WHERE id = ?', [message_id])
+        
+        if rows_affected > 0:
+            return jsonify({"success": True, "message": "消息标记为已读成功"})
+        else:
+            return jsonify({"error": "消息不存在"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# 获取用户信息
+@app.route('/api/user/<int:user_id>', methods=['GET'])
+@rate_limit(max_requests=60, window=60)
+def get_user_info(user_id):
+    try:
+        if user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
+        
+        user = query_db('SELECT id, username, nickname, avatar_url, phone FROM users WHERE id = ?', [user_id], one=True)
+        
+        if user:
+            return jsonify(dict(user))
+        else:
+            return jsonify({"error": "用户不存在"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# 更新用户信息
+@app.route('/api/user/<int:user_id>', methods=['PUT'])
+@rate_limit(max_requests=20, window=60)
+def update_user_info(user_id):
+    try:
+        if user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "无效的JSON数据"}), 400
+        
+        nickname = data.get('nickname')
+        phone = data.get('phone')
+        avatar_url = data.get('avatar_url')
+        
+        # 验证手机号格式（简单验证）
+        if phone and not re.match(r'^1[3-9]\d{9}$', phone):
+            return jsonify({"error": "手机号格式不正确"}), 400
+        
+        # 清理输入数据
+        if nickname:
+            nickname = sanitize_input(nickname, max_length=100)
+        if phone:
+            phone = sanitize_input(phone, max_length=20)
+        if avatar_url:
+            avatar_url = sanitize_input(avatar_url, max_length=255)
+        
+        # 更新用户信息
+        update_fields = []
+        update_values = []
+        
+        if nickname is not None:
+            update_fields.append("nickname = ?")
+            update_values.append(nickname)
+        
+        if phone is not None:
+            update_fields.append("phone = ?")
+            update_values.append(phone)
+            
+        if avatar_url is not None:
+            update_fields.append("avatar_url = ?")
+            update_values.append(avatar_url)
+        
+        if not update_fields:
+            return jsonify({"error": "没有提供需要更新的字段"}), 400
+        
+        update_values.append(user_id)
+        query = f"UPDATE users SET {', '.join(update_fields)} WHERE id = ?"
+        
+        update_db(query, update_values)
+        
+        return jsonify({"success": True, "message": "用户信息更新成功"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 # 添加好友关系
 @app.route('/api/add-friend', methods=['POST'])
+@rate_limit(max_requests=10, window=60)
 def add_friend():
     try:
         data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "无效的JSON数据"}), 400
+        
         user_id = data.get('user_id')
         friend_id = data.get('friend_id')
         
         if not user_id or not friend_id:
             return jsonify({"error": "缺少用户ID或好友ID"}), 400
         
+        if not isinstance(user_id, int) or not isinstance(friend_id, int):
+            return jsonify({"error": "用户ID必须是整数"}), 400
+        
+        if user_id <= 0 or friend_id <= 0:
+            return jsonify({"error": "用户ID必须大于0"}), 400
+        
         if user_id == friend_id:
             return jsonify({"error": "不能添加自己为好友"}), 400
+        
+        # 检查用户和好友是否存在
+        user_exists = query_db('SELECT id FROM users WHERE id = ?', [user_id], one=True)
+        friend_exists = query_db('SELECT id FROM users WHERE id = ?', [friend_id], one=True)
+        
+        if not user_exists or not friend_exists:
+            return jsonify({"error": "用户或好友不存在"}), 404
         
         # 检查是否已经存在好友关系
         existing_friendship = query_db('''
@@ -574,8 +745,12 @@ def add_friend():
 
 # 获取用户未读消息数量
 @app.route('/api/user/<int:user_id>/unread-messages-count', methods=['GET'])
+@rate_limit(max_requests=30, window=60)
 def get_unread_messages_count(user_id):
     try:
+        if user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
+        
         count = query_db('''
             SELECT COUNT(*) as count FROM messages 
             WHERE receiver_id = ? AND read_status = 0
@@ -587,8 +762,12 @@ def get_unread_messages_count(user_id):
 
 # 获取用户统计信息
 @app.route('/api/stats/<int:user_id>', methods=['GET'])
+@rate_limit(max_requests=60, window=60)
 def get_stats(user_id):
     try:
+        if user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
+        
         total_checkins = query_db(
             'SELECT COUNT(*) as count FROM records WHERE user_id = ?', 
             [user_id], one=True
@@ -640,11 +819,54 @@ def get_stats(user_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-if __name__ == '__main__':
-    # 初始化数据库
+def check_and_init_db():
+    """Check if database has required tables, initialize if missing"""
     if not os.path.exists(DATABASE):
         init_db()
-    
-    # 生产环境配置
-    port = int(os.environ.get('PORT', 5000))
-    app.run(debug=False, host='0.0.0.0', port=port)
+        return
+
+    # 检查数据库表是否完整
+    with app.app_context():
+        db = get_db()
+        cursor = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        users_table_exists = cursor.fetchone() is not None
+        
+        if not users_table_exists:
+            init_db()
+
+def update_intimacy_score(user_id, friend_id, score_change):
+    """更新亲密度分数"""
+    try:
+        # 检查是否已有亲密度记录
+        existing_score = query_db(
+            'SELECT score FROM intimacy_scores WHERE user_id = ? AND friend_id = ?', 
+            [user_id, friend_id], one=True
+        )
+        
+        if existing_score:
+            new_score = max(0, existing_score['score'] + score_change)  # 确保分数不低于0
+            update_db(
+                'UPDATE intimacy_scores SET score = ?, updated_at = ? WHERE user_id = ? AND friend_id = ?',
+                [new_score, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id, friend_id]
+            )
+        else:
+            new_score = max(0, 10 + score_change)  # 新增好友初始分数
+            insert_db(
+                'INSERT INTO intimacy_scores (user_id, friend_id, score, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+                [user_id, friend_id, new_score, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
+            )
+    except Exception as e:
+        print(f"更新亲密度分数失败: {str(e)}")
+
+# 配置静态文件路由
+from flask import send_from_directory
+import os
+
+# 静态文件服务 - 提供图片等资源
+@app.route('/images/<path:filename>')
+def serve_images(filename):
+    return send_from_directory(os.path.join(app.root_path, '../images'), filename)
+
+if __name__ == '__main__':
+    check_and_init_db()
+    app.run(host='0.0.0.0', port=5000, debug=False)  # 生产环境关闭调试模式

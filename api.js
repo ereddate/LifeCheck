@@ -1,5 +1,5 @@
 // API接口配置
-const API_BASE_URL = 'http://localhost:5000';  // 开发环境Flask服务器地址
+const API_BASE_URL = 'http://127.0.0.1:5000';  // 开发环境Flask服务器地址
 
 // 用户注册
 function register(userData) {
@@ -374,6 +374,49 @@ function getUnreadMessagesCount(userId) {
     });
 }
 
+// 获取用户信息
+function getUserInfo(userId) {
+    return new Promise((resolve, reject) => {
+        wx.request({
+            url: `${API_BASE_URL}/api/user/${userId}`,
+            method: 'GET',
+            success: (res) => {
+                if (res.statusCode === 200) {
+                    resolve(res.data);
+                } else {
+                    reject(new Error(`请求失败: ${res.statusCode}`));
+                }
+            },
+            fail: (err) => {
+                console.error('获取用户信息失败:', err);
+                reject(err);
+            }
+        });
+    });
+}
+
+// 更新用户信息
+function updateUserInfo(userId, userInfo) {
+    return new Promise((resolve, reject) => {
+        wx.request({
+            url: `${API_BASE_URL}/api/user/${userId}`,
+            method: 'PUT',
+            data: userInfo,
+            success: (res) => {
+                if (res.statusCode === 200) {
+                    resolve(res.data);
+                } else {
+                    reject(new Error(`请求失败: ${res.statusCode}`));
+                }
+            },
+            fail: (err) => {
+                console.error('更新用户信息失败:', err);
+                reject(err);
+            }
+        });
+    });
+}
+
 // 添加好友
 function addFriend(userId, friendId) {
     return new Promise((resolve, reject) => {
@@ -417,5 +460,7 @@ module.exports = {
     getMessages,
     markMessageRead,
     getUnreadMessagesCount,
-    addFriend
+    addFriend,
+    getUserInfo,
+    updateUserInfo
 };
