@@ -1,0 +1,36 @@
+<view class="container">
+  <view class="checkin-button-section">
+    <button class="big-checkin-btn" bindtap="submitForm">
+      <text class="btn-icon">✓</text>
+      <text class="btn-text">我在</text>
+    </button>
+  </view>
+
+  <view class="friends-section">
+    <view class="section-title" wx:if="{{friendList.length > 0}}">
+      <text class="title-text">好友未打卡</text>
+      <text class="title-count">{{friendList.length}}</text>
+    </view>
+    <view class="friend-list" wx:if="{{friendList.length > 0}}">
+      <block wx:for="{{friendList}}" wx:key="id">
+        <view class="friend-item">
+          <image class="friend-avatar" src="{{item.avatar}}" mode="aspectFill"></image>
+          <view class="friend-info">
+            <text class="friend-name">{{item.name}}</text>
+            <text class="friend-time">{{item.lastCheckTime}}</text>
+          </view>
+          <button class="remind-btn" bindtap="remindFriend" data-id="{{item.id}}" data-name="{{item.name}}">
+            提醒
+          </button>
+        </view>
+      </block>  
+    </view>
+    <view wx:elseif="{{friendList.length === 0}}" class="empty-friends">
+        <text class="empty-text">暂无好友</text>
+        <button class="share-btn" open-type="share">
+          <text class="share-icon">+</text>
+          <text class="share-text">叫好友一起打卡</text>
+        </button>
+      </view>
+  </view>
+</view>

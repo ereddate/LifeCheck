@@ -1,0 +1,47 @@
+<view class="container">
+  <view class="user-header" bindtap="goToAuth">
+    <view class="avatar">
+      <image src="{{userInfo.avatarUrl}}" mode="aspectFill"></image>
+    </view>
+    <view class="user-info">
+      <text class="nickname">{{userInfo.nickName}}</text>
+      <text class="user-desc">坚持打卡，遇见更好的自己</text>
+    </view>
+  </view>
+
+  <view class="stats-grid">
+    <view class="stat-box">
+      <text class="stat-num">{{stats.totalCheckins}}</text>
+      <text class="stat-label">总打卡数</text>
+    </view>
+    <view class="stat-box">
+      <text class="stat-num">{{stats.friendCount}}</text>
+      <text class="stat-label">好友数量</text>
+    </view>
+    <view class="stat-box button" bindtap="remindNotCheckedInFriends">
+      <text class="stat-num">{{stats.notCheckedInFriends}}</text>
+      <text class="stat-label">未打卡好友</text>
+    </view>
+  </view>
+
+  <view class="menu-section">
+    <view class="menu-item" bindtap="goToRecords">
+      <view class="menu-icon">📊</view>
+      <text class="menu-text">打卡统计</text>
+      <text class="menu-arrow">›</text>
+    </view>
+    <view class="menu-item" bindtap="goToSettings">
+      <view class="menu-icon">⚙️</view>
+      <text class="menu-text">设置</text>
+      <text class="menu-arrow">›</text>
+    </view>
+  </view>
+
+  <view class="tips-section card">
+    <view class="tips-header">
+      <text class="tips-icon">💡</text>
+      <text class="tips-title">今日提醒</text>
+    </view>
+    <text class="tips-content">{{todayTip}}</text>
+  </view>
+</view>

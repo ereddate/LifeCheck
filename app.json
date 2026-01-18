@@ -1,0 +1,45 @@
+{
+  "pages": [
+    "pages/add/add",
+    "pages/index/index",
+    "pages/detail/detail",
+    "pages/mine/mine",
+    "pages/auth/auth"
+  ],
+  "window": {
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#07C160",
+    "navigationBarTitleText": "人生打卡",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f7f7f7"
+  },
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#07C160",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/add/add",
+        "text": "今日打卡",
+        "iconPath": "images/tabbar/zengjia.png",
+        "selectedIconPath": "images/tabbar/zengjia_1.png"
+      },
+      {
+        "pagePath": "pages/index/index",
+        "text": "打卡记录",
+        "iconPath": "images/tabbar/shijian.png",
+        "selectedIconPath": "images/tabbar/shijian_1.png"
+      },
+      {
+        "pagePath": "pages/mine/mine",
+        "text": "我的",
+        "iconPath": "images/tabbar/shequ.png",
+        "selectedIconPath": "images/tabbar/shequ_1.png"
+      }
+    ]
+  },
+  "cloud": true,
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

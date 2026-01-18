@@ -1,0 +1,14 @@
+<view class="container">
+  <view class="auth-content">
+    <view class="auth-title">授权登录</view>
+    <view class="auth-desc">为了更好的体验，请授权获取您的个人信息</view>
+    
+    <button class="auth-btn" open-type="getUserInfo" bindgetuserinfo="onGetUserInfo">
+      授权登录
+    </button>
+    
+    <view class="auth-tips">
+      <text class="tips-text">点击授权表示您同意我们的隐私政策和服务条款</text>
+    </view>
+  </view>
+</view>

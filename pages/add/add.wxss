@@ -1,0 +1,194 @@
+.container {
+  min-height: 100vh;
+  background: #f7f7f7;
+  padding: 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.header-section {
+  text-align: center;
+  margin-bottom: 80rpx;
+  margin-top: 60rpx;
+}
+
+.header-title {
+  font-size: 48rpx;
+  font-weight: bold;
+  color: #333;
+  display: block;
+  margin-bottom: 16rpx;
+}
+
+.header-desc {
+  font-size: 28rpx;
+  color: #999;
+}
+
+.checkin-button-section {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.big-checkin-btn {
+  width: 800rpx;
+  height: 300rpx;
+  background: linear-gradient(135deg, #07C160 0%, #059b4d 100%);
+  border-radius: 10rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 12rpx 40rpx rgba(7, 193, 96, 0.5);
+  border: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.big-checkin-btn::after {
+  border: none;
+}
+
+.big-checkin-btn:active {
+  transform: scale(0.95);
+  box-shadow: 0 8rpx 24rpx rgba(7, 193, 96, 0.4);
+}
+
+.btn-icon {
+  font-size: 120rpx;
+  color: #fff;
+  margin-bottom: 20rpx;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.btn-text {
+  font-size: 48rpx;
+  color: #fff;
+  font-weight: 600;
+}
+
+.friends-section {
+  width: 100%;
+  margin-top: 60rpx;
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 30rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.08);
+}
+
+.section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+.title-text {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.title-count {
+  font-size: 24rpx;
+  color: #999;
+  background: #f0f0f0;
+  padding: 4rpx 12rpx;
+  border-radius: 20rpx;
+}
+
+.friend-list {
+  max-height: 400rpx;
+  overflow-y: auto;
+}
+
+.friend-item {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.friend-item:last-child {
+  border-bottom: none;
+}
+
+.friend-avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  margin-right: 20rpx;
+  background: #f0f0f0;
+}
+
+.friend-info {
+  flex: 1;
+}
+
+.friend-name {
+  display: block;
+  font-size: 28rpx;
+  color: #333;
+  margin-bottom: 8rpx;
+}
+
+.friend-time {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.remind-btn {
+  background: #f0f0f0;
+  color: #666;
+  border-radius: 30rpx;
+  padding: 10rpx 24rpx;
+  font-size: 24rpx;
+  border: none;
+}
+
+.remind-btn::after {
+  border: none;
+}
+
+.empty-friends {
+  text-align: center;
+  padding: 60rpx 0;
+}
+
+.empty-text {
+  display: block;
+  font-size: 28rpx;
+  color: #999;
+  margin-bottom: 40rpx;
+}
+
+.share-btn {
+  background: linear-gradient(135deg, #4a90e2 0%, #3a7bd5 100%);
+  color: #fff;
+  border-radius: 50rpx;
+  padding: 20rpx 40rpx;
+  font-size: 28rpx;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.share-btn::after {
+  border: none;
+}
+
+.share-icon {
+  margin-right: 12rpx;
+  font-size: 32rpx;
+}
+
+.share-text {
+  font-weight: 600;
+}
