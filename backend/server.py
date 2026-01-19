@@ -489,7 +489,7 @@ def get_not_checked_in_friends(user_id):
 
 # 获取用户高亲密度未打卡好友
 @app.route('/api/user/<int:user_id>/top-intimacy-not-checked-in-friends', methods=['GET'])
-@rate_limit(max_requests=20, window=60)
+@rate_limit(max_requests=60, window=60)
 def get_top_intimacy_not_checked_in_friends(user_id):
     try:
         if user_id <= 0:
@@ -760,7 +760,7 @@ def add_friend():
 
 # 获取用户未读消息数量
 @app.route('/api/user/<int:user_id>/unread-messages-count', methods=['GET'])
-@rate_limit(max_requests=30, window=60)
+@rate_limit(max_requests=60, window=60)
 def get_unread_messages_count(user_id):
     try:
         if user_id <= 0:
