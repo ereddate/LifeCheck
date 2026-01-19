@@ -5,7 +5,7 @@
 }
 
 .header {
-  background: white;
+  background: #e5e5e5;
   padding: 30rpx;
   border-radius: 12rpx;
   margin-bottom: 20rpx;
@@ -44,6 +44,7 @@
   border: none;
   min-height: 96rpx;
   transition: all 0.2s ease;
+  text-align:center;
 }
 
 .action-btn::after {
@@ -127,10 +128,11 @@
 .remind-btn {
   background: #f0f0f0;
   color: #666;
-  border-radius: 30rpx;
-  padding: 10rpx 24rpx;
+  border-radius: 12rpx;
+  padding: 24rpx 32rpx;
   font-size: 24rpx;
   border: none;
+  text-align:center;
 }
 
 .remind-btn::after {

@@ -26,7 +26,7 @@
             <text class="friend-time">亲密度: {{item.intimacy_score}}</text>
           </view>
           <button class="remind-btn" bindtap="remindFriend" data-id="{{item.id}}" data-name="{{item.nickname || item.username}}">
-            提醒
+            敲一敲
           </button>
         </view>
       </block>  

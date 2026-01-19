@@ -135,9 +135,6 @@
   padding: 24rpx;
   font-size: 32rpx;
   min-height: 96rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   transition: all 0.2s ease;
 }
 

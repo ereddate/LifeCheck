@@ -20,7 +20,7 @@
     </view>
     <view class="stat-box button" bindtap="remindNotCheckedInFriends">
       <text class="stat-num">{{stats.notCheckedInFriends}}</text>
-      <text class="stat-label">未打卡好友</text>
+      <text class="stat-label">敲一敲</text>
     </view>
     <view class="stat-box" bindtap="goToMessages">
       <text class="stat-num">{{stats.messageCount}}</text>

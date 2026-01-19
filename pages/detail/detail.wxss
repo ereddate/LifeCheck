@@ -87,9 +87,8 @@
   line-height: 88rpx;
   background: #07C160;
   color: #fff;
-  border-radius: 44rpx;
+  border-radius: 12rpx;
   font-size: 32rpx;
-  font-weight: 600;
   margin-bottom: 20rpx;
   border: none;
 }
