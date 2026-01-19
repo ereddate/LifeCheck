@@ -894,6 +894,9 @@ def update_intimacy_score(user_id, friend_id, score_change, action_type='general
         from datetime import datetime, timedelta
         import math
         
+        # 每次更新前先执行时间衰减检查
+        _apply_time_decay_for_user_pair(user_id, friend_id)
+        
         # 检查是否已有亲密度记录
         existing_record = query_db(
             'SELECT * FROM intimacy_scores WHERE user_id = ? AND friend_id = ?', 
@@ -914,7 +917,7 @@ def update_intimacy_score(user_id, friend_id, score_change, action_type='general
             except ValueError:
                 last_interaction = now  # 如果解析失败，使用当前时间
             
-            # 计算时间衰减
+            # 计算时间衰减（这次是本次互动前的衰减）
             time_diff = now - last_interaction
             days_since_interaction = time_diff.days
             
@@ -963,6 +966,50 @@ def update_intimacy_score(user_id, friend_id, score_change, action_type='general
             )
     except Exception as e:
         print(f"更新亲密度分数失败: {str(e)}")
+
+
+def _apply_time_decay_for_user_pair(user_id, friend_id):
+    """对特定用户对应用时间衰减"""
+    try:
+        from datetime import datetime
+        
+        now = datetime.now()
+        current_time_str = now.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # 获取这对用户的亲密度记录
+        record = query_db(
+            'SELECT * FROM intimacy_scores WHERE user_id = ? AND friend_id = ?', 
+            [user_id, friend_id], one=True
+        )
+        
+        if record:
+            current_score = record['score'] or 0
+            last_interaction_str = record['last_interaction'] or record.get('updated_at') or current_time_str
+            
+            # 解析最后互动时间
+            try:
+                last_interaction = datetime.strptime(last_interaction_str, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                last_interaction = now
+            
+            # 计算时间差
+            time_diff = now - last_interaction
+            days_since_interaction = time_diff.days
+            
+            # 如果超过7天没有互动，则开始衰减
+            if days_since_interaction > 7:
+                decay_days = days_since_interaction - 7  # 超过的天数
+                decay_rate = 0.05  # 每天衰减5%
+                total_decay = min(decay_rate * decay_days, 0.5)  # 最多衰减50%
+                decayed_score = max(0, int(current_score * (1 - total_decay)))
+                
+                # 更新分数
+                update_db(
+                    'UPDATE intimacy_scores SET score = ?, updated_at = ? WHERE user_id = ? AND friend_id = ?',
+                    [decayed_score, current_time_str, user_id, friend_id]
+                )
+    except Exception as e:
+        print(f"应用时间衰减失败: {str(e)}")
 
 
 def apply_time_decay_to_all():
@@ -1031,30 +1078,40 @@ def get_personalized_recommendations(user_id, limit=5):
         
         for friend in friends_with_intimacy:
             friend_id = friend['friend_id']
-            intimacy_score = friend['intimacy_score'] or 0
+            base_score = friend['intimacy_score'] or 0
             
-            # 如果很久没互动，降低推荐优先级
+            # 获取最后互动时间
             last_interaction_str = friend.get('last_interaction')
             if last_interaction_str:
                 try:
                     last_interaction = datetime.strptime(last_interaction_str, '%Y-%m-%d %H:%M:%S')
                     days_since = (now - last_interaction).days
                     
-                    # 如果超过14天未互动，稍微降低权重
-                    if days_since > 14:
-                        intimacy_score *= 0.8
-                    elif days_since > 7:
-                        intimacy_score *= 0.9
+                    # 应用时间衰减公式，使长时间未互动的用户分数降低
+                    if days_since > 7:
+                        decay_factor = min(0.05 * (days_since - 7), 0.5)  # 最多衰减50%
+                        adjusted_score = base_score * (1 - decay_factor)
+                    else:
+                        # 对于近期活跃的用户，可考虑提升权重
+                        if days_since <= 1:  # 今天或昨天互动过
+                            adjusted_score = base_score * 1.1  # 提升10%
+                        else:
+                            adjusted_score = base_score
                 except ValueError:
-                    pass  # 如果时间格式有问题，继续使用原分数
+                    # 如果时间格式有问题，使用原始分数
+                    adjusted_score = base_score
+            else:
+                # 如果没有互动记录，使用原始分数
+                adjusted_score = base_score
             
             recommendations.append({
                 'friend_id': friend_id,
                 'username': friend['username'],
                 'nickname': friend['nickname'],
-                'intimacy_score': intimacy_score,
+                'base_score': base_score,
+                'adjusted_score': adjusted_score,
                 'last_interaction': friend.get('last_interaction'),
-                'recommendation_score': intimacy_score  # 可以在此基础上添加更多计算逻辑
+                'recommendation_score': adjusted_score
             })
         
         # 按推荐分数排序并返回前几个
