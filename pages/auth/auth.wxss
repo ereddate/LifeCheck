@@ -67,11 +67,21 @@
 
 .btn-login, .btn-register {
   width: 100%;
-  padding: 12rpx;
+  padding: 24rpx;
   background-color: #07C160;
   color: white;
   border: none;
-  border-radius: 5rpx;
+  border-radius: 12rpx;
   font-size: 32rpx;
-  margin-top: 10rpx;
+  margin-top: 20rpx;
+  min-height: 96rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.btn-login:active, .btn-register:active {
+  transform: scale(0.95);
+  opacity: 0.8;
 }

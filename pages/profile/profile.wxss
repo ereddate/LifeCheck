@@ -51,13 +51,23 @@
 .save-btn {
   background: linear-gradient(135deg, #4a90e2 0%, #3a7bd5 100%);
   color: white;
-  border-radius: 50rpx;
-  padding: 20rpx;
+  border-radius: 12rpx;
+  padding: 24rpx;
   font-size: 32rpx;
   border: none;
   margin-top: 20rpx;
+  min-height: 96rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
 }
 
 .save-btn::after {
   border: none;
+}
+
+.save-btn:active {
+  transform: scale(0.95);
+  opacity: 0.8;
 }

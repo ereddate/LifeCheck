@@ -12,7 +12,65 @@ page {
 .btn-primary {
   background-color: #07C160;
   color: #fff;
-  border-radius: 8rpx;
+  border-radius: 12rpx;
+  padding: 24rpx 40rpx;
+  font-size: 32rpx;
+  border: none;
+  min-height: 96rpx; /* 至少48px(约36rpx)以满足触摸目标大小 */
+}
+
+/* 通用按钮样式 */
+.button-base {
+  border-radius: 12rpx;
+  padding: 24rpx 40rpx;
+  font-size: 32rpx;
+  border: none;
+  min-height: 96rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.button-base::after {
+  border: none;
+}
+
+.button-base:active {
+  transform: scale(0.95);
+  opacity: 0.8;
+}
+
+/* 主要按钮 */
+.btn-main {
+  background-color: #07C160;
+  color: #fff;
+}
+
+/* 次要按钮 */
+.btn-secondary {
+  background-color: #f0f0f0;
+  color: #666;
+}
+
+/* 危险按钮 */
+.btn-danger {
+  background-color: #ff4757;
+  color: #fff;
+}
+
+/* 轮廓按钮 */
+.btn-outline {
+  background-color: transparent;
+  color: #07C160;
+  border: 2rpx solid #07C160;
+}
+
+/* 禁用按钮 */
+.btn-disabled {
+  background-color: #d9d9d9;
+  color: #8c8c8c;
 }
 
 .card {

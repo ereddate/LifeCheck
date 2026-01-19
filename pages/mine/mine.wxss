@@ -131,4 +131,17 @@
 .button{
   background: linear-gradient(135deg, #07C160 0%, #059b4d 100%);
   color:#ffffff;
+  border-radius: 12rpx;
+  padding: 24rpx;
+  font-size: 32rpx;
+  min-height: 96rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.button:active {
+  transform: scale(0.95);
+  opacity: 0.8;
 }
