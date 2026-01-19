@@ -25,6 +25,9 @@
 - **速率限制**: 防止API滥用和DDoS攻击
 - **身份认证强化**: 改进的用户验证机制
 - **数据库优化**: 使用WAL模式提升并发性能
+- **连接池管理**: 支持数据库连接复用，提升高并发性能
+- **多数据库支持**: 可灵活切换SQLite/MySQL/PostgreSQL
+- **配置化部署**: 通过环境变量实现快速环境切换
 
 ### 🔄 用户体验优化
 - **下拉刷新**: 支持个人中心页面下拉刷新数据
@@ -47,10 +50,12 @@
 
 ### 后端
 - Flask Web框架
-- SQLite数据库
+- 多数据库支持 (SQLite/MySQL/PostgreSQL)
 - RESTful API设计
 - 跨域资源共享(CORS)支持
 - 静态文件服务
+- 连接池管理
+- 配置化部署
 
 ## 快速开始
 
@@ -78,7 +83,44 @@ python server.py
 
 ### 生产环境部署
 
-参见 [DEPLOY_GUIDE.md](./DEPLOY_GUIDE.md) 获取详细的部署指南。
+#### 环境变量配置
+项目支持通过环境变量进行配置，支持快速切换数据库和调整性能参数：
+
+```bash
+# 数据库类型 (sqlite/mysql/postgresql)
+export DB_TYPE=sqlite
+
+# SQLite 配置
+export SQLITE_DB_PATH=打卡记录.db
+
+# MySQL 配置 (可选)
+export MYSQL_HOST=localhost
+export MYSQL_PORT=3306
+export MYSQL_USER=username
+export MYSQL_PASSWORD=password
+export MYSQL_DATABASE=qdaily_checkin
+
+# PostgreSQL 配置 (可选)
+export PG_HOST=localhost
+export PG_PORT=5432
+export PG_USER=username
+export PG_PASSWORD=password
+export PG_DATABASE=qdaily_checkin
+
+# 性能配置
+export POOL_SIZE=20
+export MAX_OVERFLOW=30
+export POOL_TIMEOUT=30
+export RATE_LIMIT_MAX_REQUESTS=100
+export RATE_LIMIT_WINDOW=60
+```
+
+#### 部署方式
+1. **传统部署**: `python server.py`
+2. **生产部署**: `gunicorn --config gunicorn.conf.py server:app`
+3. **容器化部署**: `docker run -d -e DB_TYPE=postgresql ... qdaily-checkin-backend`
+
+参见 [DEPLOYMENT.md](./backend/DEPLOYMENT.md) 获取详细的部署指南。
 
 ## API接口
 
@@ -142,13 +184,18 @@ life-checkin/
 │   ├── settings/         # 设置页面
 │   ├── friends/          # 好友页面
 │   └── messages/         # 消息页面
-├── backend/              # 后端服务
-│   ├── server.py         # 主服务文件
-│   ├── schema.sql        # 数据库表结构
-│   └── requirements.txt  # 依赖包
 ├── api.js                # API接口封装
 ├── app.js                # 小程序应用配置
 ├── app.json              # 小程序全局配置
+├── backend/
+│   ├── server.py         # 主服务文件
+│   ├── db.py             # 数据库抽象层
+│   ├── config.py         # 配置管理
+│   ├── schema.sql        # 数据库表结构
+│   ├── requirements.txt  # 依赖包
+│   ├── gunicorn.conf.py  # Gunicorn生产配置
+│   ├── Dockerfile        # Docker容器化配置
+│   └── DEPLOYMENT.md     # 部署说明文档
 └── ...
 ```
 

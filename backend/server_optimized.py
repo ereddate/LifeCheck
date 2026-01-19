@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, g
-from flask_cors import CORS
+import sqlite3
 import json
 import os
 import re
@@ -12,12 +12,7 @@ from functools import wraps
 import time
 from collections import defaultdict, deque
 
-from db import query_db, insert_db, update_db, rate_limit, sanitize_input, init_db_engine
-from db import db_type  # 导入数据库类型
-from sqlalchemy import text  # 导入text用于SQLAlchemy查询
-
 app = Flask(__name__)
-CORS(app)  # 启用跨域支持
 DATABASE = '打卡记录.db'
 
 # 速率限制存储
@@ -46,44 +41,23 @@ def rate_limit(max_requests=10, window=60):
         return decorated_function
     return decorator
 
-# 初始化数据库引擎
-init_db_engine()
+def get_db():
+    db = getattr(g, '_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect(DATABASE)
+        db.row_factory = sqlite3.Row  # 使结果可以像字典一样访问
+        # 设置连接属性以提高性能和安全性
+        db.execute('PRAGMA foreign_keys = ON')  # 启用外键约束
+        db.execute('PRAGMA journal_mode = WAL')  # 启用WAL模式以提高并发性能
+    return db
 
 def init_db():
-    """初始化数据库表 - 根据当前数据库类型执行相应的初始化"""
-    if os.path.exists('schema.sql'):
+    with app.app_context():
+        db = get_db()
+        # 以UTF-8编码读取schema.sql文件
         with open('schema.sql', 'r', encoding='utf-8') as f:
-            schema_sql = f.read()
-        
-        # 根据数据库类型执行不同的初始化逻辑
-        if db_type == 'mysql':
-            # MySQL特定的初始化
-            with get_db() as conn:
-                # 分割SQL语句并逐个执行
-                statements = schema_sql.split(';')
-                for statement in statements:
-                    statement = statement.strip()
-                    if statement:
-                        conn.execute(text(statement))
-                conn.commit()
-        elif db_type == 'postgresql':
-            # PostgreSQL特定的初始化
-            with get_db() as conn:
-                statements = schema_sql.split(';')
-                for statement in statements:
-                    statement = statement.strip()
-                    if statement:
-                        conn.execute(text(statement))
-                conn.commit()
-        else:  # sqlite
-            # SQLite初始化
-            import sqlite3
-            temp_conn = sqlite3.connect('temp_init.db')
-            temp_conn.executescript(schema_sql)
-            temp_conn.close()
-        
-        # 重新初始化主数据库引擎
-        init_db_engine()
+            db.cursor().executescript(f.read())
+        db.commit()
 
 def query_db(query, args=(), one=False):
     """安全的数据库查询函数，使用参数化查询防止SQL注入"""
@@ -126,7 +100,7 @@ def close_connection(exception):
         db.close()
 
 @app.route('/')
-@rate_limit(max_requests=100, window=60)  # 对首页访问进行速率限制
+@rate_limit(max_requests=30, window=60)  # 对首页访问进行速率限制
 def hello():
     return jsonify({"message": "欢迎使用人生打卡后端服务!"})
 
@@ -239,7 +213,7 @@ def login():
 
 # 获取所有打卡记录
 @app.route('/api/records', methods=['GET'])
-@rate_limit(max_requests=60, window=60)
+@rate_limit(max_requests=20, window=60)
 def get_records():
     try:
         # 添加分页支持以提高性能
@@ -256,7 +230,7 @@ def get_records():
 
 # 获取单个用户的打卡记录
 @app.route('/api/user/<int:user_id>/records', methods=['GET'])
-@rate_limit(max_requests=60, window=60)
+@rate_limit(max_requests=20, window=60)
 def get_user_records(user_id):
     try:
         # 验证用户ID范围
@@ -311,10 +285,10 @@ def do_checkin():
         if not user:
             return jsonify({"error": "用户不存在"}), 404
         
-        # 创建打卡记录 - 让数据库使用默认的CURRENT_TIMESTAMP
+        # 创建打卡记录
         record_id = insert_db(
-            'INSERT INTO records (user_id, title, date) VALUES (?, ?, ?)',
-            [user_id, title, today]
+            'INSERT INTO records (user_id, title, date, create_time) VALUES (?, ?, ?, ?)',
+            [user_id, title, today, datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
         )
         
         # 获取完整的打卡记录
@@ -371,7 +345,7 @@ def create_task():
 
 # 获取用户的打卡任务
 @app.route('/api/user/<int:user_id>/tasks', methods=['GET'])
-@rate_limit(max_requests=60, window=60)
+@rate_limit(max_requests=20, window=60)
 def get_user_tasks(user_id):
     try:
         if user_id <= 0:
@@ -451,7 +425,7 @@ def change_password():
 
 # 获取用户好友列表
 @app.route('/api/user/<int:user_id>/friends', methods=['GET'])
-@rate_limit(max_requests=60, window=60)
+@rate_limit(max_requests=20, window=60)
 def get_user_friends(user_id):
     try:
         if user_id <= 0:
@@ -472,7 +446,7 @@ def get_user_friends(user_id):
 
 # 获取用户未打卡的好友
 @app.route('/api/user/<int:user_id>/not-checked-in-friends', methods=['GET'])
-@rate_limit(max_requests=60, window=60)
+@rate_limit(max_requests=20, window=60)
 def get_not_checked_in_friends(user_id):
     try:
         if user_id <= 0:
@@ -527,7 +501,7 @@ def get_top_intimacy_not_checked_in_friends(user_id):
 
 # 分页获取用户好友列表
 @app.route('/api/user/<int:user_id>/friends/paginated', methods=['GET'])
-@rate_limit(max_requests=60, window=60)
+@rate_limit(max_requests=20, window=60)
 def get_friends_paginated(user_id):
     try:
         if user_id <= 0:
@@ -572,7 +546,7 @@ def get_friends_paginated(user_id):
 
 # 提醒好友打卡
 @app.route('/api/remind-friend/<int:user_id>/<int:friend_id>', methods=['POST'])
-@rate_limit(max_requests=30, window=60)
+@rate_limit(max_requests=10, window=60)
 def remind_friend(user_id, friend_id):
     try:
         if user_id <= 0 or friend_id <= 0:
@@ -604,7 +578,7 @@ def remind_friend(user_id, friend_id):
 
 # 获取用户消息列表
 @app.route('/api/user/<int:user_id>/messages', methods=['GET'])
-@rate_limit(max_requests=60, window=60)
+@rate_limit(max_requests=20, window=60)
 def get_messages(user_id):
     try:
         if user_id <= 0:
@@ -648,7 +622,7 @@ def mark_message_read(message_id):
 
 # 获取用户信息
 @app.route('/api/user/<int:user_id>', methods=['GET'])
-@rate_limit(max_requests=60, window=60)
+@rate_limit(max_requests=30, window=60)
 def get_user_info(user_id):
     try:
         if user_id <= 0:
@@ -721,7 +695,7 @@ def update_user_info(user_id):
 
 # 添加好友关系
 @app.route('/api/add-friend', methods=['POST'])
-@rate_limit(max_requests=20, window=60)
+@rate_limit(max_requests=10, window=60)
 def add_friend():
     try:
         data = request.get_json()
@@ -786,7 +760,7 @@ def get_unread_messages_count(user_id):
 
 # 获取用户统计信息
 @app.route('/api/stats/<int:user_id>', methods=['GET'])
-@rate_limit(max_requests=60, window=60)
+@rate_limit(max_requests=20, window=60)
 def get_stats(user_id):
     try:
         if user_id <= 0:
@@ -845,29 +819,18 @@ def get_stats(user_id):
 
 def check_and_init_db():
     """Check if database has required tables, initialize if missing"""
-    # 根据数据库类型使用不同的查询方式
-    try:
-        if db_type == 'mysql':
-            # MySQL 查询表是否存在
-            result = query_db("SELECT table_name FROM information_schema.tables WHERE table_schema = %s AND table_name = %s", 
-                             (os.environ.get('MYSQL_DATABASE', 'qdaily_checkin'), 'users'), one=True)
-            users_table_exists = result is not None
-        elif db_type == 'postgresql':
-            # PostgreSQL 查询表是否存在
-            result = query_db("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = %s", 
-                             ('users',), one=True)
-            users_table_exists = result is not None
-        else:  # sqlite
-            # SQLite 查询表是否存在
-            result = query_db("SELECT name FROM sqlite_master WHERE type='table' AND name=?", 
-                             ('users',), one=True)
-            users_table_exists = result is not None
-    except:
-        # 如果查询失败，假定表不存在
-        users_table_exists = False
-    
-    if not users_table_exists:
+    if not os.path.exists(DATABASE):
         init_db()
+        return
+
+    # 检查数据库表是否完整
+    with app.app_context():
+        db = get_db()
+        cursor = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        users_table_exists = cursor.fetchone() is not None
+        
+        if not users_table_exists:
+            init_db()
 
 def update_intimacy_score(user_id, friend_id, score_change):
     """更新亲密度分数"""
@@ -892,15 +855,6 @@ def update_intimacy_score(user_id, friend_id, score_change):
             )
     except Exception as e:
         print(f"更新亲密度分数失败: {str(e)}")
-
-# 配置静态文件路由
-from flask import send_from_directory
-import os
-
-# 静态文件服务 - 提供图片等资源
-@app.route('/images/<path:filename>')
-def serve_images(filename):
-    return send_from_directory(os.path.join(app.root_path, '../images'), filename)
 
 if __name__ == '__main__':
     check_and_init_db()

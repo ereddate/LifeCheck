@@ -29,7 +29,7 @@ Page({
   // 检查用户今天是否已经打卡
   checkTodayCheckinStatus() {
     this.ensureLogin().then((userId) => {
-      // 获取今天的日期
+      // 获取今天的日期（仅日期部分，不包含时间）
       const today = new Date();
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       
@@ -37,7 +37,22 @@ Page({
       api.getUserRecords(userId)
         .then(records => {
           // 检查今天是否有打卡记录
-          const todayRecord = records.some(record => record.date === todayStr);
+          // 优先检查 date 字段，如果没有则尝试从 create_time 字段提取日期
+          const todayRecord = records.some(record => {
+            // 检查 date 字段
+            if (record.date && record.date === todayStr) {
+              return true;
+            }
+            // 如果 date 字段不匹配或不存在，尝试从 create_time 提取日期
+            if (record.create_time) {
+              // 从 create_time 字段提取日期部分 (YYYY-MM-DD)
+              const recordDate = record.create_time.split(' ')[0];
+              if (recordDate === todayStr) {
+                return true;
+              }
+            }
+            return false;
+          });
           
           this.setData({
             hasCheckedInToday: todayRecord
@@ -184,6 +199,7 @@ Page({
         title: '今日已打卡',
         icon: 'none'
       });
+      
       return;
     }
 

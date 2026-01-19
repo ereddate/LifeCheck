@@ -25,6 +25,9 @@ A mini program that encourages daily check-ins to help users develop good habits
 - **Rate Limiting**: Prevent API abuse and DDoS attacks
 - **Enhanced Authentication**: Improved user verification mechanisms
 - **Database Optimization**: Use WAL mode to improve concurrent performance
+- **Connection Pool Management**: Support database connection reuse to improve high-concurrency performance
+- **Multi-database Support**: Flexible switching between SQLite/MySQL/PostgreSQL
+- **Configuration-based Deployment**: Rapid environment switching through environment variables
 
 ### 🔄 User Experience Optimization
 - **Pull-to-refresh**: Support pull-down refresh for personal center page data
@@ -47,10 +50,12 @@ A mini program that encourages daily check-ins to help users develop good habits
 
 ### Backend
 - Flask Web Framework
-- SQLite Database
+- Multi-database Support (SQLite/MySQL/PostgreSQL)
 - RESTful API Design
 - Cross-Origin Resource Sharing (CORS) support
 - Static file service
+- Connection Pool Management
+- Configuration-based Deployment
 
 ## Quick Start
 
@@ -78,7 +83,44 @@ Service will run on `http://localhost:5000`
 
 ### Production Deployment
 
-Refer to [DEPLOY_GUIDE.md](./DEPLOY_GUIDE.md) for detailed deployment guide.
+#### Environment Variable Configuration
+The project supports configuration through environment variables, enabling rapid database switching and performance parameter adjustment:
+
+```bash
+# Database type (sqlite/mysql/postgresql)
+export DB_TYPE=sqlite
+
+# SQLite Configuration
+export SQLITE_DB_PATH=打卡记录.db
+
+# MySQL Configuration (optional)
+export MYSQL_HOST=localhost
+export MYSQL_PORT=3306
+export MYSQL_USER=username
+export MYSQL_PASSWORD=password
+export MYSQL_DATABASE=qdaily_checkin
+
+# PostgreSQL Configuration (optional)
+export PG_HOST=localhost
+export PG_PORT=5432
+export PG_USER=username
+export PG_PASSWORD=password
+export PG_DATABASE=qdaily_checkin
+
+# Performance Configuration
+export POOL_SIZE=20
+export MAX_OVERFLOW=30
+export POOL_TIMEOUT=30
+export RATE_LIMIT_MAX_REQUESTS=100
+export RATE_LIMIT_WINDOW=60
+```
+
+#### Deployment Methods
+1. **Traditional Deployment**: `python server.py`
+2. **Production Deployment**: `gunicorn --config gunicorn.conf.py server:app`
+3. **Containerized Deployment**: `docker run -d -e DB_TYPE=postgresql ... qdaily-checkin-backend`
+
+Refer to [DEPLOYMENT.md](./backend/DEPLOYMENT.md) for detailed deployment guide.
 
 ## API Endpoints
 
@@ -142,13 +184,18 @@ life-checkin/
 │   ├── settings/         # Settings page
 │   ├── friends/          # Friends page
 │   └── messages/         # Messages page
-├── backend/              # Backend service
-│   ├── server.py         # Main service file
-│   ├── schema.sql        # Database schema
-│   └── requirements.txt  # Dependencies
 ├── api.js                # API interface wrapper
 ├── app.js                # Mini program app configuration
 ├── app.json              # Mini program global configuration
+├── backend/
+│   ├── server.py         # Main service file
+│   ├── db.py             # Database abstraction layer
+│   ├── config.py         # Configuration management
+│   ├── schema.sql        # Database schema
+│   ├── requirements.txt  # Dependencies
+│   ├── gunicorn.conf.py  # Gunicorn production configuration
+│   ├── Dockerfile        # Docker containerization configuration
+│   └── DEPLOYMENT.md     # Deployment documentation
 └── ...
 ```
 

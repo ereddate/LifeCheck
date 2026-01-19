@@ -31,13 +31,13 @@
         </view>
       </block>  
     </view>
-    <view class="friends-actions" wx:if="{{totalFriendCount > 0}}">
+    <view class="friends-actions" wx:if="{{totalFriendCount > 10}}">
       <button class="view-all-btn" bindtap="goToAllFriends">
         查看所有好友
       </button>
     </view>
-    <view wx:elseif="{{friendList.length === 0}}" class="empty-friends">
-        <text class="empty-text">暂无未打卡好友</text>
+    <view class="empty-friends">
+        <text class="empty-text" wx:if="{{totalFriendCount < 1}}" >暂无未打卡好友</text>
         <button class="share-btn" open-type="share">
           <text class="share-icon">+</text>
           <text class="share-text">叫好友一起打卡</text>

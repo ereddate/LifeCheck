@@ -94,12 +94,21 @@ Page({
           // 处理返回的数据格式，使其与原有UI适配
           const list = res.map(item => {
             // 假设后端返回的数据包含打卡任务相关信息
-            // 解决iOS日期格式兼容性问题
-            let dateStr = item.create_time;
+            // 使用 date 字段来判断打卡日期
+            let dateStr = item.date;
+            if (!dateStr) {
+              // 如果没有 date 字段，则使用 create_time 字段
+              dateStr = item.create_time;
+            }
+            
             if (typeof dateStr === 'string' && dateStr.includes(' ')) {
               // 将 "YYYY-MM-DD HH:MM:SS" 转换为 "YYYY/MM/DD HH:MM:SS"
               dateStr = dateStr.replace(/-/g, '/');
+            } else if (typeof dateStr === 'string' && !dateStr.includes(' ')) {
+              // 如果 dateStr 只包含日期 "YYYY-MM-DD"，则加上时间部分
+              dateStr = dateStr.replace(/-/g, '/') + ' 00:00:00';
             }
+            
             const lastCheckTime = new Date(dateStr);
             const isToday = lastCheckTime >= today;
             
