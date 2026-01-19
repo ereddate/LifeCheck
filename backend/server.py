@@ -108,39 +108,7 @@ def init_db():
         # 重新初始化主数据库引擎
         init_db_engine()
 
-def query_db(query, args=(), one=False):
-    """安全的数据库查询函数，使用参数化查询防止SQL注入"""
-    cur = get_db().execute(query, args)
-    rv = cur.fetchall()
-    cur.close()
-    return (rv[0] if rv else None) if one else rv
 
-def insert_db(query, args=()):
-    """安全的数据库插入函数"""
-    db = get_db()
-    cur = db.execute(query, args)
-    db.commit()
-    return cur.lastrowid
-
-def update_db(query, args=()):
-    """安全的数据库更新函数"""
-    db = get_db()
-    cur = db.execute(query, args)
-    db.commit()
-    return cur.rowcount
-
-def sanitize_input(text, max_length=255):
-    """清理和验证输入数据"""
-    if not text:
-        return text
-    # 去除首尾空白字符
-    text = text.strip()
-    # 限制最大长度
-    if len(text) > max_length:
-        text = text[:max_length]
-    # 使用bleach清理潜在危险的HTML标签
-    text = bleach.clean(text, strip=True)
-    return text
 
 @app.teardown_appcontext
 def close_connection(exception):
@@ -927,4 +895,4 @@ def serve_images(filename):
 
 if __name__ == '__main__':
     check_and_init_db()
-    app.run(host='0.0.0.0', port=5000, debug=False)  # 生产环境关闭调试模式
+    app.run(host='0.0.0.0', port=5000, debug=True)  # 生产环境关闭调试模式
