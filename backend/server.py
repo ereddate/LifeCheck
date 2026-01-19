@@ -90,7 +90,8 @@ def init_db():
         else:  # sqlite
             # SQLite - 更细致的处理，分别处理每个语句
             import sqlite3
-            with sqlite3.connect('打卡记录.db') as conn:
+            from config import config
+            with sqlite3.connect(config.SQLITE_DB_PATH) as conn:
                 statements = schema_sql.split(';')
                 for statement in statements:
                     statement = statement.strip()
