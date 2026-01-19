@@ -561,6 +561,34 @@ def get_friends_paginated(user_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# 触发时间衰减
+@app.route('/api/admin/process-time-decay', methods=['POST'])
+@rate_limit(max_requests=10, window=60)
+def trigger_time_decay():
+    """手动触发时间衰减机制"""
+    try:
+        apply_time_decay_to_all()
+        return jsonify({"success": True, "message": "时间衰减处理完成"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# 获取个性化推荐好友
+@app.route('/api/user/<int:user_id>/personalized-friend-recommendations', methods=['GET'])
+@rate_limit(max_requests=60, window=60)
+def get_personalized_friend_recommendations(user_id):
+    try:
+        if user_id <= 0:
+            return jsonify({"error": "无效的用户ID"}), 400
+        
+        # 获取查询参数
+        limit = min(request.args.get('limit', 5, type=int), 20)  # 限制最大推荐数量
+        
+        recommendations = get_personalized_recommendations(user_id, limit)
+        
+        return jsonify(recommendations)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # 提醒好友打卡
 @app.route('/api/remind-friend/<int:user_id>/<int:friend_id>', methods=['POST'])
 @rate_limit(max_requests=30, window=60)
@@ -587,7 +615,7 @@ def remind_friend(user_id, friend_id):
         ''', [user_id, friend_id, 'remind', '您的好友提醒您今天记得打卡', datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
         
         # 更新亲密度分数
-        update_intimacy_score(user_id, friend_id, 1)  # 提醒好友增加1分亲密度
+        update_intimacy_score(user_id, friend_id, 1, 'remind')  # 提醒好友增加1分亲密度
         
         return jsonify({"success": True, "message": "提醒发送成功"})
     except Exception as e:
@@ -860,29 +888,182 @@ def check_and_init_db():
     if not users_table_exists:
         init_db()
 
-def update_intimacy_score(user_id, friend_id, score_change):
-    """更新亲密度分数"""
+def update_intimacy_score(user_id, friend_id, score_change, action_type='general'):
+    """更新亲密度分数，支持多维度评分"""
     try:
+        from datetime import datetime, timedelta
+        import math
+        
         # 检查是否已有亲密度记录
-        existing_score = query_db(
-            'SELECT score FROM intimacy_scores WHERE user_id = ? AND friend_id = ?', 
+        existing_record = query_db(
+            'SELECT * FROM intimacy_scores WHERE user_id = ? AND friend_id = ?', 
             [user_id, friend_id], one=True
         )
         
-        if existing_score:
-            new_score = max(0, existing_score['score'] + score_change)  # 确保分数不低于0
+        now = datetime.now()
+        current_time_str = now.strftime('%Y-%m-%d %H:%M:%S')
+        
+        if existing_record:
+            # 获取当前分数和最后互动时间
+            current_score = existing_record['score'] or 0
+            last_interaction_str = existing_record['last_interaction'] or existing_record.get('updated_at') or current_time_str
+            
+            # 解析最后互动时间
+            try:
+                last_interaction = datetime.strptime(last_interaction_str, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                last_interaction = now  # 如果解析失败，使用当前时间
+            
+            # 计算时间衰减
+            time_diff = now - last_interaction
+            days_since_interaction = time_diff.days
+            
+            # 根据天数计算衰减分数 (每天衰减0.1分，最多衰减到当前分数的50%)
+            decay_factor = min(days_since_interaction * 0.1, 0.5)  # 最多衰减50%
+            decay_amount = current_score * decay_factor
+            decayed_score = max(0, current_score - decay_amount)
+            
+            # 应用新的分数变化
+            new_score = max(0, decayed_score + score_change)
+            
+            # 根据不同行为类型给予不同奖励
+            action_multipliers = {
+                'remind': 1.2,      # 提醒好友
+                'checkin_together': 1.5,  # 一起打卡
+                'message': 1.1,     # 发送消息
+                'comment': 1.3,     # 评论打卡
+                'gift': 2.0         # 送礼物
+            }
+            
+            multiplier = action_multipliers.get(action_type, 1.0)
+            new_score = int(new_score * multiplier)
+            
+            # 更新数据库
             update_db(
-                'UPDATE intimacy_scores SET score = ?, updated_at = ? WHERE user_id = ? AND friend_id = ?',
-                [new_score, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id, friend_id]
+                'UPDATE intimacy_scores SET score = ?, last_interaction = ?, updated_at = ? WHERE user_id = ? AND friend_id = ?',
+                [new_score, current_time_str, current_time_str, user_id, friend_id]
             )
         else:
-            new_score = max(0, 10 + score_change)  # 新增好友初始分数
+            # 新增好友初始分数
+            base_score = 10
+            action_multipliers = {
+                'remind': 1.2,
+                'checkin_together': 1.5,
+                'message': 1.1,
+                'comment': 1.3,
+                'gift': 2.0
+            }
+            
+            multiplier = action_multipliers.get(action_type, 1.0)
+            initial_score = int((base_score + score_change) * multiplier)
+            
             insert_db(
-                'INSERT INTO intimacy_scores (user_id, friend_id, score, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-                [user_id, friend_id, new_score, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
+                'INSERT INTO intimacy_scores (user_id, friend_id, score, last_interaction, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+                [user_id, friend_id, initial_score, current_time_str, current_time_str, current_time_str]
             )
     except Exception as e:
         print(f"更新亲密度分数失败: {str(e)}")
+
+
+def apply_time_decay_to_all():
+    """对所有亲密度分数应用时间衰减（定期调用）"""
+    try:
+        from datetime import datetime, timedelta
+        
+        now = datetime.now()
+        current_time_str = now.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # 获取所有亲密度记录
+        all_scores = query_db('SELECT * FROM intimacy_scores')
+        
+        for record in all_scores:
+            user_id = record['user_id']
+            friend_id = record['friend_id']
+            current_score = record['score'] or 0
+            last_interaction_str = record['last_interaction'] or record.get('updated_at') or current_time_str
+            
+            # 解析最后互动时间
+            try:
+                last_interaction = datetime.strptime(last_interaction_str, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                last_interaction = now
+            
+            # 计算时间差
+            time_diff = now - last_interaction
+            days_since_interaction = time_diff.days
+            
+            # 如果超过7天没有互动，则开始衰减
+            if days_since_interaction > 7:
+                decay_days = days_since_interaction - 7  # 超过的天数
+                decay_rate = 0.05  # 每天衰减5%
+                total_decay = min(decay_rate * decay_days, 0.5)  # 最多衰减50%
+                decayed_score = max(0, int(current_score * (1 - total_decay)))
+                
+                # 更新分数
+                update_db(
+                    'UPDATE intimacy_scores SET score = ?, updated_at = ? WHERE user_id = ? AND friend_id = ?',
+                    [decayed_score, current_time_str, user_id, friend_id]
+                )
+    except Exception as e:
+        print(f"应用时间衰减失败: {str(e)}")
+
+
+def get_personalized_recommendations(user_id, limit=5):
+    """获取个性化的高亲密度好友推荐"""
+    try:
+        from datetime import datetime, timedelta
+        
+        # 获取用户的好友列表及其亲密度分数
+        friends_with_intimacy = query_db('''
+            SELECT f.friend_id, u.username, u.nickname, COALESCE(i.score, 0) as intimacy_score,
+                   i.last_interaction
+            FROM friendships f
+            JOIN users u ON f.friend_id = u.id
+            LEFT JOIN intimacy_scores i ON f.user_id = i.user_id AND f.friend_id = i.friend_id
+            WHERE f.user_id = ?
+            AND f.status = 'accepted'
+            ORDER BY COALESCE(i.score, 0) DESC, f.created_at DESC
+        ''', [user_id])
+        
+        # 计算推荐分数（考虑亲密度和最后互动时间）
+        recommendations = []
+        now = datetime.now()
+        
+        for friend in friends_with_intimacy:
+            friend_id = friend['friend_id']
+            intimacy_score = friend['intimacy_score'] or 0
+            
+            # 如果很久没互动，降低推荐优先级
+            last_interaction_str = friend.get('last_interaction')
+            if last_interaction_str:
+                try:
+                    last_interaction = datetime.strptime(last_interaction_str, '%Y-%m-%d %H:%M:%S')
+                    days_since = (now - last_interaction).days
+                    
+                    # 如果超过14天未互动，稍微降低权重
+                    if days_since > 14:
+                        intimacy_score *= 0.8
+                    elif days_since > 7:
+                        intimacy_score *= 0.9
+                except ValueError:
+                    pass  # 如果时间格式有问题，继续使用原分数
+            
+            recommendations.append({
+                'friend_id': friend_id,
+                'username': friend['username'],
+                'nickname': friend['nickname'],
+                'intimacy_score': intimacy_score,
+                'last_interaction': friend.get('last_interaction'),
+                'recommendation_score': intimacy_score  # 可以在此基础上添加更多计算逻辑
+            })
+        
+        # 按推荐分数排序并返回前几个
+        recommendations.sort(key=lambda x: x['recommendation_score'], reverse=True)
+        return recommendations[:limit]
+        
+    except Exception as e:
+        print(f"获取个性化推荐失败: {str(e)}")
+        return []
 
 # 配置静态文件路由
 from flask import send_from_directory
