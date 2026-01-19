@@ -64,7 +64,13 @@ def init_db():
                 for statement in statements:
                     statement = statement.strip()
                     if statement:
-                        conn.execute(text(statement))
+                        try:
+                            conn.execute(text(statement))
+                        except Exception as e:
+                            # 如果是创建已存在表或索引的错误，忽略它
+                            error_msg = str(e).lower()
+                            if "already exists" not in error_msg and "duplicate" not in error_msg:
+                                raise e
                 conn.commit()
         elif db_type == 'postgresql':
             # PostgreSQL特定的初始化
@@ -73,14 +79,30 @@ def init_db():
                 for statement in statements:
                     statement = statement.strip()
                     if statement:
-                        conn.execute(text(statement))
+                        try:
+                            conn.execute(text(statement))
+                        except Exception as e:
+                            # 如果是创建已存在表或索引的错误，忽略它
+                            error_msg = str(e).lower()
+                            if "already exists" not in error_msg and "duplicate" not in error_msg:
+                                raise e
                 conn.commit()
         else:  # sqlite
-            # SQLite初始化
+            # SQLite - 更细致的处理，分别处理每个语句
             import sqlite3
-            temp_conn = sqlite3.connect('temp_init.db')
-            temp_conn.executescript(schema_sql)
-            temp_conn.close()
+            with sqlite3.connect('打卡记录.db') as conn:
+                statements = schema_sql.split(';')
+                for statement in statements:
+                    statement = statement.strip()
+                    if statement:
+                        try:
+                            conn.execute(statement)
+                        except sqlite3.Error as e:
+                            error_msg = str(e).lower()
+                            # 如果是表或索引已存在的错误，忽略它
+                            if "already exists" not in error_msg and "duplicate" not in error_msg:
+                                raise e
+                conn.commit()
         
         # 重新初始化主数据库引擎
         init_db_engine()
